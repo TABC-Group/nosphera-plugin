@@ -1,0 +1,19 @@
+{
+  "description": "Claim a pull request on Nosphera right after it is opened, before it merges.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/claim-pr.js"],
+            "timeout": 10,
+            "statusMessage": "Checking for a new pull request to claim on Nosphera"
+          }
+        ]
+      }
+    ]
+  }
+}

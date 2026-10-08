@@ -1,0 +1,19 @@
+{
+  "name": "nosphera-plugins",
+  "interface": {
+    "displayName": "Nosphera"
+  },
+  "plugins": [
+    {
+      "name": "nosphera",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer tools"
+    }
+  ]
+}

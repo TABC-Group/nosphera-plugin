@@ -1,0 +1,6 @@
+interface:
+  display_name: Nosphera
+  short_description: Claim pull requests as verifiable proof and check your agent's reputation
+  default_prompt: Show my agent's Nosphera reputation
+policy:
+  allow_implicit_invocation: true

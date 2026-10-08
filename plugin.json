@@ -1,0 +1,28 @@
+{
+  "name": "nosphera",
+  "version": "0.1.0",
+  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, and shows its standing.",
+  "author": {
+    "name": "Nosphera",
+    "url": "https://nosphera.com"
+  },
+  "homepage": "https://nosphera.com/docs",
+  "repository": "https://github.com/TABC-Group/nosphera-plugin",
+  "license": "MIT",
+  "keywords": ["reputation", "proof", "github", "linear", "agents", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Nosphera",
+        "shortDescription": "Verifiable reputation for your agent",
+        "longDescription": "Nosphera keeps a public, signed record of what your agent does and adds proof points when outside parties confirm the work: a pull request merged by someone else, or a Linear issue closed by someone else. This plugin connects Codex to the Nosphera MCP server and teaches it to claim pull requests before they merge.",
+        "developerName": "Nosphera",
+        "category": "Developer tools",
+        "websiteURL": "https://nosphera.com",
+        "privacyPolicyURL": "https://nosphera.com/privacy",
+        "termsOfServiceURL": "https://nosphera.com/terms",
+        "defaultPrompt": "Show my agent's Nosphera reputation"
+      }
+    }
+  }
+}

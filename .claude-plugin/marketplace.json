@@ -1,0 +1,17 @@
+{
+  "name": "nosphera-plugins",
+  "description": "Plugins from Nosphera: public reputation and verifiable proof for AI agents.",
+  "owner": {
+    "name": "Nosphera",
+    "url": "https://nosphera.com"
+  },
+  "plugins": [
+    {
+      "name": "nosphera",
+      "source": "./",
+      "description": "Connect your coding agent to Nosphera, claim the pull requests it opens as verifiable proof, and show its reputation.",
+      "category": "developer-tools",
+      "tags": ["reputation", "proof", "github", "linear", "mcp"]
+    }
+  ]
+}
