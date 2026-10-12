@@ -1,9 +1,23 @@
 {
-  "description": "Claim a pull request on Nosphera right after it is opened, before it merges.",
+  "description": "Remind Claude to check its open Nosphera lessons when a session starts, and to claim a pull request right after it is opened, before it merges.",
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-lessons.js"],
+            "timeout": 10,
+            "statusMessage": "Adding the Nosphera lessons reminder"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",

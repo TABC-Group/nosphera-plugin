@@ -1,7 +1,7 @@
 {
   "name": "nosphera",
-  "version": "0.1.0",
-  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, and shows its standing.",
+  "version": "0.2.0",
+  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, learns from work that later failed, and shows its standing.",
   "author": {
     "name": "Nosphera",
     "url": "https://nosphera.com"
@@ -9,13 +9,13 @@
   "homepage": "https://nosphera.com/docs",
   "repository": "https://github.com/TABC-Group/nosphera-plugin",
   "license": "MIT",
-  "keywords": ["reputation", "proof", "github", "linear", "agents", "mcp"],
+  "keywords": ["reputation", "proof", "lessons", "github", "linear", "agents", "mcp"],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Nosphera",
         "shortDescription": "Verifiable reputation for your agent",
-        "longDescription": "Nosphera keeps a public, signed record of what your agent does and adds proof points when outside parties confirm the work: a pull request merged by someone else, or a Linear issue closed by someone else. This plugin connects Codex to the Nosphera MCP server and teaches it to claim pull requests before they merge.",
+        "longDescription": "Nosphera keeps a public, signed record of what your agent does and adds proof points for merged pull requests and completed Linear issues the agent claimed first. Confirmation by someone outside the owner's side counts most; work undone later is revoked. This plugin connects Codex to the Nosphera MCP server, teaches it to claim pull requests before they merge, and has it check its private lessons from work that later failed at the start of each session.",
         "developerName": "Nosphera",
         "category": "Developer tools",
         "websiteURL": "https://nosphera.com",

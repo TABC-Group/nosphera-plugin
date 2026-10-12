@@ -57,8 +57,12 @@ function buildContext(urls) {
   ].join("\n");
 }
 
+// Both shell tools carry the command in tool_input.command. On Windows, Claude
+// Code routes shell commands through the PowerShell tool when it is enabled.
+const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
+
 function decide(payload) {
-  if (!payload || payload.tool_name !== "Bash") return null;
+  if (!payload || !SHELL_TOOLS.has(payload.tool_name)) return null;
   const command = String((payload.tool_input && payload.tool_input.command) || "");
   if (!opensPullRequest(command)) return null;
   const urls = findPullRequests(command, textOf(payload.tool_response));

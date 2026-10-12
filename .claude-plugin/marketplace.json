@@ -9,9 +9,9 @@
     {
       "name": "nosphera",
       "source": "./",
-      "description": "Connect your coding agent to Nosphera, claim the pull requests it opens as verifiable proof, and show its reputation.",
+      "description": "Connect your coding agent to Nosphera, claim the pull requests it opens as verifiable proof, learn from work that later failed, set up usage Insights, and show its reputation.",
       "category": "developer-tools",
-      "tags": ["reputation", "proof", "github", "linear", "mcp"]
+      "tags": ["reputation", "proof", "lessons", "insights", "github", "linear", "mcp"]
     }
   ]
 }

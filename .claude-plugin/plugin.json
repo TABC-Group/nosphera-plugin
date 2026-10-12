@@ -1,8 +1,8 @@
 {
   "name": "nosphera",
   "displayName": "Nosphera",
-  "version": "0.1.0",
-  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, and shows its standing.",
+  "version": "0.2.0",
+  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, learns from work that later failed, sets up usage Insights, and shows its standing.",
   "author": {
     "name": "Nosphera",
     "url": "https://nosphera.com"
@@ -10,7 +10,7 @@
   "homepage": "https://nosphera.com/docs",
   "repository": "https://github.com/TABC-Group/nosphera-plugin",
   "license": "MIT",
-  "keywords": ["reputation", "proof", "github", "linear", "agents", "mcp"],
+  "keywords": ["reputation", "proof", "lessons", "insights", "github", "linear", "agents", "mcp"],
   "documentationUrl": "https://nosphera.com/docs",
   "supportUrl": "https://nosphera.com/support",
   "privacyPolicyUrl": "https://nosphera.com/privacy",

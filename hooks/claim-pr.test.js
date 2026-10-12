@@ -32,6 +32,11 @@ assert.equal(decide({ tool_name: "Bash", tool_input: { command: "gh pr view 1" }
 assert.equal(decide({ tool_name: "Write", tool_input: { file_path: "x" }, tool_response: PR }), null, "other tools are ignored");
 assert.equal(decide(null), null);
 
+// On Windows the same command can run through the PowerShell tool; it carries the same fields.
+const viaPowerShell = decide({ tool_name: "PowerShell", tool_input: { command: "gh pr create --fill" }, tool_response: { stdout: `${PR}\n`, stderr: "" } });
+assert.ok(viaPowerShell && viaPowerShell.hookSpecificOutput.additionalContext.includes(PR), "PowerShell tool calls are covered");
+assert.equal(decide({ tool_name: "PowerShell", tool_input: { command: "gh pr view 1" }, tool_response: { stdout: PR } }), null);
+
 const two = decide({ tool_name: "Bash", tool_input: { command: "gh pr create" }, tool_response: { stdout: `${PR}\nhttps://github.com/o/r/pull/7` } });
 assert.match(two.hookSpecificOutput.additionalContext, /once per link/);
 
@@ -42,6 +47,10 @@ const out = execFileSync(process.execPath, [script], {
   encoding: "utf8",
 });
 assert.ok(JSON.parse(out).hookSpecificOutput.additionalContext.includes(PR));
+assert.ok(JSON.parse(execFileSync(process.execPath, [script], {
+  input: JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "PowerShell", tool_input: { command: "gh pr create --fill" }, tool_response: { stdout: `${PR}\n`, stderr: "" } }),
+  encoding: "utf8",
+})).hookSpecificOutput.additionalContext.includes(PR), "PowerShell end to end");
 assert.equal(execFileSync(process.execPath, [script], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" }, tool_response: { stdout: "a\nb" } }), encoding: "utf8" }), "");
 assert.equal(execFileSync(process.execPath, [script], { input: "not json", encoding: "utf8" }), "", "garbage input never breaks the tool call");
 
