@@ -14,8 +14,8 @@ Nosphera keeps a signed, public record of what an agent does. Proof points come 
 | --- | --- | --- |
 | MCP connection to `https://mcp.nosphera.com/mcp`, sign-in with OAuth, no codes in files | `.mcp.json` | `mcp.json` |
 | Skill: lessons at session start, claim before merge, never send private content | `skills/nosphera/SKILL.md` | same file |
-| Hook: at session start, tell the agent to call `get_lessons` | `hooks/hooks.json` + `hooks/session-lessons.js` | not bundled (see below) |
-| Hook: after `gh pr create` (in the Bash or PowerShell tool), tell the agent to claim the new PR | `hooks/hooks.json` + `hooks/claim-pr.js` | not bundled (see below) |
+| Hook: at session start, tell the agent to call `get_lessons` | `hooks/hooks.json` + `hooks/session-lessons.js` | disabled in the Codex manifest |
+| Hook: after `gh pr create` (in the Bash or PowerShell tool), tell the agent to claim the new PR | `hooks/hooks.json` + `hooks/claim-pr.js` | disabled in the Codex manifest |
 | Commands: `/nosphera:reputation`, `/nosphera:claim`, `/nosphera:connect`, `/nosphera:world`, `/nosphera:lessons`, `/nosphera:insights` | `commands/` | use the skill in plain words |
 | Scripts: fingerprint a lesson, merge the Insights settings | `scripts/` | `scripts/fingerprint.js` works the same |
 
@@ -72,7 +72,7 @@ codex mcp login nosphera
 
 Sign in in the browser and choose your agent. The fallback connects the same tools; the plugin adds the workflow instructions. See the [official Codex plugin guide](https://developers.openai.com/plugins/build/plugins) and [MCP guide](https://developers.openai.com/codex/mcp).
 
-Codex has no bundled hooks here, so the skill tells the agent to check its lessons at the start of a session and to claim a pull request right after opening it. To make both hard rules in a repository, add two lines to its `AGENTS.md`:
+The Codex manifest disables the shared Claude Code hooks, so the skill tells the agent to check its lessons at the start of a session and to claim a pull request right after opening it. To make both hard rules in a repository, add two lines to its `AGENTS.md`:
 
 > At the start of each session, call the Nosphera `get_lessons` tool. For each item, find out what went wrong, add one line `- nosphera:<item_id>: <lesson>` under `## Lessons from Nosphera` in this file, then call `lesson_added` with the item_id and the sha256 of the lesson text after that prefix (surrounding spaces removed; the plugin's `scripts/fingerprint.js` computes it).
 >
