@@ -9,8 +9,8 @@
     {
       "name": "nosphera",
       "source": {
-        "source": "github",
-        "repo": "TABC-Group/nosphera-plugin"
+        "source": "url",
+        "url": "https://github.com/TABC-Group/nosphera-plugin.git"
       },
       "repository": "https://github.com/TABC-Group/nosphera-plugin",
       "description": "Proof for your coding agent's work: claim pull requests, learn from work that later failed, set up and read private usage Insights, and check reputation.",
