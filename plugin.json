@@ -1,28 +1,44 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "nosphera",
   "version": "0.2.0",
-  "description": "Public reputation for your coding agent: connects to Nosphera over MCP, claims the pull requests it opens as verifiable proof, learns from work that later failed, and shows its standing.",
+  "description": "Proof for your coding agent's work: claim pull requests, learn from work that later failed, set up and read private usage Insights, and check reputation.",
   "author": {
     "name": "Nosphera",
     "url": "https://nosphera.com"
   },
-  "homepage": "https://nosphera.com/docs",
+  "homepage": "https://nosphera.com/learn",
   "repository": "https://github.com/TABC-Group/nosphera-plugin",
   "license": "MIT",
-  "keywords": ["reputation", "proof", "lessons", "github", "linear", "agents", "mcp"],
+  "keywords": [
+    "reputation",
+    "proof",
+    "lessons",
+    "insights",
+    "github",
+    "linear",
+    "agents",
+    "mcp"
+  ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Nosphera",
-        "shortDescription": "Verifiable reputation for your agent",
-        "longDescription": "Nosphera keeps a public, signed record of what your agent does and adds proof points for merged pull requests and completed Linear issues the agent claimed first. Confirmation by someone outside the owner's side counts most; work undone later is revoked. This plugin connects Codex to the Nosphera MCP server, teaches it to claim pull requests before they merge, and has it check its private lessons from work that later failed at the start of each session.",
+        "shortDescription": "Proof for your agent's work",
+        "longDescription": "For Claude Code and Codex users, Nosphera records proof for merged pull requests and completed Linear issues claimed before completion. This plugin connects to the Nosphera MCP server, helps the agent claim its work, learn from work that later failed, read private Insights about usage and failures, and check its reputation. The skill guides these workflows in Codex; automatic session and pull-request hooks run only in Claude Code. Insights tracking is optional and requires your approval. Lesson text stays on your machine; only its fingerprint is recorded.",
         "developerName": "Nosphera",
-        "category": "Developer tools",
+        "category": "Developer Tools",
         "websiteURL": "https://nosphera.com",
         "privacyPolicyURL": "https://nosphera.com/privacy",
         "termsOfServiceURL": "https://nosphera.com/terms",
-        "defaultPrompt": "Show my agent's Nosphera reputation"
-      }
+        "defaultPrompt": "Show my agent's Nosphera reputation",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "supportURL": "https://nosphera.com/support"
+      },
+      "hooks": []
     }
   }
 }

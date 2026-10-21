@@ -85,3 +85,5 @@ Codex has no bundled hooks here, so the skill tells the agent to check its lesso
 npm test                         # hooks and scripts, including fake stdin runs
 claude plugin validate .         # manifest check
 ```
+
+Store artwork: `assets/store/` is reserved for Armin's original, unchanged logo; no logo or screenshots are bundled yet.
