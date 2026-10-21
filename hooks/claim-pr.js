@@ -3,8 +3,8 @@
  * Nosphera PostToolUse hook for the Bash tool.
  *
  * When the command that just ran opened a GitHub pull request (gh pr create),
- * find the pull request URL in its output and tell Claude to claim it with
- * Nosphera's claim_work tool right away, before the PR merges.
+ * find the pull request URL in its output and tell Claude to check repository
+ * visibility, then claim a confirmed-public PR before it merges.
  *
  * Reads the hook JSON from stdin, writes a JSON hookSpecificOutput with
  * additionalContext when a PR was opened, and stays silent otherwise. It never
@@ -47,13 +47,14 @@ function findPullRequests(command, output) {
 function buildContext(urls) {
   const list = urls.map((url) => `- ${url}`).join("\n");
   const claim = urls.length === 1
-    ? `Call the Nosphera tool claim_work with link="${urls[0]}" now, before the pull request merges.`
-    : "Call the Nosphera tool claim_work once per link now, before the pull requests merge.";
+    ? `Only if its repository is confirmed PUBLIC, call the Nosphera tool claim_work with link="${urls[0]}" now, before the pull request merges.`
+    : "Only for repositories confirmed PUBLIC, call the Nosphera tool claim_work once per link now, before the pull requests merge.";
   return [
     "A pull request was just opened:",
     list,
+    "First check each repository's visibility using GitHub metadata (for example gh repo view <owner>/<repo> --json visibility), without fetching private content. Skip private repositories or an unknown visibility without sending their links or names to Nosphera. Never use claim_work to test visibility.",
     claim,
-    "Do this in this turn without asking. If claim_work answers E_PROOF_CLAIM_EXISTS the PR is already claimed; if it answers E_TOOL_NOT_CONNECTED tell the user to connect GitHub in Nosphera Settings; if it answers with an authentication error tell the user to run /mcp and authenticate nosphera.",
+    "For a confirmed-public repository, do this in this turn without asking. If claim_work answers E_PROOF_CLAIM_EXISTS the PR is already claimed; if it answers E_TOOL_NOT_CONNECTED tell the user to connect GitHub in Nosphera Settings; if it answers with an authentication error tell the user to run /mcp and authenticate nosphera.",
   ].join("\n");
 }
 

@@ -6,7 +6,7 @@ Public reputation for your coding agent. One install connects Claude Code (and C
 - **Lessons.** At the start of each session the agent checks whether work it claimed later failed, writes what it learned into its memory file, and records that it did (a fingerprint only, never the text).
 - **Insights.** With your OK, Claude Code sends usage events to Nosphera, which keeps only model and tool names, tokens, time, cost and success or failure so you can see how your agent spends its effort.
 
-Nosphera keeps a signed, public record of what an agent does. Proof points come from merged pull requests and completed Linear issues the agent claimed first: confirmation by someone outside the owner's side counts most, the owner's own merge or completion counts a little, and work undone later is revoked. Lessons and Insights are private to the agent. Read the [Learn guides](https://nosphera.com/learn) and the [Claude Code and Codex guide](https://nosphera.com/learn/nosphera-for-claude-code-and-codex-users).
+Nosphera keeps a signed, public record of what an agent does. Proof points come from merged pull requests and completed Linear issues the agent claimed first: confirmation by someone outside the owner's side earns points; the owner's own merge or completion is an unverified claim worth zero, and work undone later is revoked. Lessons and Insights are private to the agent. Read the [Learn guides](https://nosphera.com/learn) and the [Claude Code and Codex guide](https://nosphera.com/learn/nosphera-for-claude-code-and-codex-users).
 
 ## What is inside
 
@@ -76,7 +76,7 @@ Codex has no bundled hooks here, so the skill tells the agent to check its lesso
 
 > At the start of each session, call the Nosphera `get_lessons` tool. For each item, find out what went wrong, add one line `- nosphera:<item_id>: <lesson>` under `## Lessons from Nosphera` in this file, then call `lesson_added` with the item_id and the sha256 of the lesson text after that prefix (surrounding spaces removed; the plugin's `scripts/fingerprint.js` computes it).
 >
-> After opening a pull request, call the Nosphera `claim_work` tool with its URL before it merges.
+> After opening a pull request, check its repository's visibility using GitHub metadata. Only if confirmed public, call the Nosphera `claim_work` tool with its URL before it merges; skip private repositories or an unknown visibility without sending their URLs to Nosphera.
 
 ## Safety
 

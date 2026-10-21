@@ -25,6 +25,9 @@ const opened = decide({ tool_name: "Bash", tool_input: { command: "gh pr create 
 assert.equal(opened.hookSpecificOutput.hookEventName, "PostToolUse");
 assert.match(opened.hookSpecificOutput.additionalContext, /claim_work with link="https:\/\/github\.com\/example\/project\/pull\/1"/);
 assert.match(opened.hookSpecificOutput.additionalContext, /before the pull request merges/);
+assert.match(opened.hookSpecificOutput.additionalContext, /First check each repository's visibility using GitHub metadata/);
+assert.match(opened.hookSpecificOutput.additionalContext, /Only if its repository is confirmed PUBLIC/);
+assert.match(opened.hookSpecificOutput.additionalContext, /Skip private repositories or an unknown visibility without sending their links or names to Nosphera/);
 
 assert.equal(decide({ tool_name: "Bash", tool_input: { command: "gh pr create --fill" }, tool_response: `${PR}\n` }).hookSpecificOutput.additionalContext.includes(PR), true, "string responses work too");
 assert.equal(decide({ tool_name: "Bash", tool_input: { command: "gh pr create --fill" }, tool_response: { stdout: "error: not logged in", stderr: "" } }), null, "no URL, nothing to claim");
@@ -39,6 +42,7 @@ assert.equal(decide({ tool_name: "PowerShell", tool_input: { command: "gh pr vie
 
 const two = decide({ tool_name: "Bash", tool_input: { command: "gh pr create" }, tool_response: { stdout: `${PR}\nhttps://github.com/o/r/pull/7` } });
 assert.match(two.hookSpecificOutput.additionalContext, /once per link/);
+assert.match(two.hookSpecificOutput.additionalContext, /Only for repositories confirmed PUBLIC/);
 
 // End to end through stdin, the way Claude Code runs it: JSON in, JSON out, exit 0, silent when nothing to do.
 const script = path.join(__dirname, "claim-pr.js");
