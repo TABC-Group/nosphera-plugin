@@ -26,6 +26,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/insights-settings.js" plan
 
 Show the user the full output. It names their user settings file (`~/.claude/settings.json`), lists every key that would be added or replaced, states that every other setting stays as it is, and shows whether the token file and the header helper already exist. Explain any `Warning:` line in one sentence each.
 
+The plan explicitly sets the logs endpoint and protocol, clears old static telemetry headers, and clears any beta tracing destination so the tracking code goes to Nosphera. Previous header values stay hidden in the output and remain in the backup. If managed settings or the environment that launches Claude Code control telemetry, use the Collector guide with the administrator instead of applying this user-settings setup; those controls can take precedence.
+
 If the user wants to see the block on its own, run the same script with `show`.
 
 ## 3. The token

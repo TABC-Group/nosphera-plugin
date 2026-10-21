@@ -15,7 +15,7 @@ const read = () => JSON.parse(fs.readFileSync(settings, "utf8"));
 const run = (...args) => main([...args, "--settings", settings, "--home", home]);
 
 try {
-  // The block follows Nosphera's published Insights setup guide: events only, no content, Nosphera endpoint.
+  // Nosphera's settings plus explicit routing/credential overrides for existing OTel configurations.
   assert.deepEqual(ENV, {
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_LOGS_EXPORTER: "otlp",
@@ -23,13 +23,19 @@ try {
     OTEL_TRACES_EXPORTER: "none",
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
     OTEL_EXPORTER_OTLP_ENDPOINT: "https://mcp.nosphera.com/otlp",
+    OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/json",
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://mcp.nosphera.com/otlp/v1/logs",
+    OTEL_EXPORTER_OTLP_HEADERS: "",
+    OTEL_EXPORTER_OTLP_LOGS_HEADERS: "",
+    BETA_TRACING_ENDPOINT: "",
     OTEL_LOG_ASSISTANT_RESPONSES: "0",
     OTEL_METRICS_INCLUDE_SESSION_ID: "false",
     OTEL_METRICS_INCLUDE_ACCOUNT_UUID: "false",
     OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES: "false",
     OTEL_METRICS_INCLUDE_REPOSITORY: "false",
   });
-  assert.ok(!("OTEL_EXPORTER_OTLP_HEADERS" in ENV), "the token never goes into settings.json");
+  assert.equal(ENV.OTEL_EXPORTER_OTLP_HEADERS, "", "static credentials are cleared, never stored in settings.json");
+  assert.equal(ENV.OTEL_EXPORTER_OTLP_LOGS_HEADERS, "");
 
   // Paths differ by platform; the helper setting on Windows runs through PowerShell with a quoted path.
   const win = locations({ platform: "win32", home: "C:\\Users\\me" });
@@ -81,12 +87,12 @@ try {
   assert.equal(again.changed, false);
   assert.ok(again.changes.every((change) => change.kind === "same"));
 
-  // Content switches and a stray headers setting are reported, never silently kept quiet.
+  // Content switches are reported; old static credentials are cleared, with a warning.
   const noisy = plan({ env: { OTEL_LOG_USER_PROMPTS: "1", OTEL_LOG_TOOL_DETAILS: "0", OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer x" } }, block);
   assert.equal(noisy.warnings.length, 2);
   assert.match(noisy.warnings[0], /OTEL_LOG_USER_PROMPTS/);
   assert.match(noisy.warnings[1], /OTEL_EXPORTER_OTLP_HEADERS/);
-  assert.equal(noisy.merged.env.OTEL_EXPORTER_OTLP_HEADERS, "Authorization=Bearer x", "left as it is");
+  assert.equal(noisy.merged.env.OTEL_EXPORTER_OTLP_HEADERS, "", "old credentials are not sent to Nosphera");
 
   // Values that are printed never show a token.
   assert.equal(shown('echo {"Authorization":"Bearer nsc_abc123"}'), '"echo {\\"Authorization\\":\\"Bearer [hidden]\\"}"');
@@ -120,21 +126,46 @@ try {
   assert.match(out.stdout, /Nothing to change/);
 
   // An existing file with other settings keeps them, and a backup is made first.
-  fs.writeFileSync(settings, `${JSON.stringify({ enabledPlugins: { x: true }, env: { FOO: "bar", OTEL_LOGS_EXPORTER: "none" }, otelHeadersHelper: 'echo {"Authorization":"Bearer nsc_oldtoken"}' }, null, 2)}\n`);
+  fs.writeFileSync(settings, `${JSON.stringify({
+    enabledPlugins: { x: true },
+    env: {
+      FOO: "bar",
+      OTEL_LOGS_EXPORTER: "none",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://collector.example.test/v1/logs",
+      OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "grpc",
+      OTEL_EXPORTER_OTLP_HEADERS: "api-key=example-old-generic-key",
+      OTEL_EXPORTER_OTLP_LOGS_HEADERS: "x-api-key=example-old-logs-key",
+      BETA_TRACING_ENDPOINT: "https://collector.example.test/beta",
+      ENABLE_BETA_TRACING_DETAILED: "1",
+    },
+    otelHeadersHelper: 'echo {"Authorization":"Bearer nsc_oldtoken"}',
+  }, null, 2)}\n`);
   out = run("plan");
   assert.match(out.stdout, /~ env\.OTEL_LOGS_EXPORTER: "none" -> "otlp"/);
   assert.match(out.stdout, /~ otelHeadersHelper: .*Bearer \[hidden\]/);
   assert.doesNotMatch(out.stdout, /nsc_oldtoken/, "an old inline token is never printed");
+  assert.match(out.stdout, /~ env\.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https:\/\/collector\.example\.test\/v1\/logs" -> "https:\/\/mcp\.nosphera\.com\/otlp\/v1\/logs"/);
+  assert.match(out.stdout, /~ env\.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "grpc" -> "http\/json"/);
+  assert.match(out.stdout, /~ env\.OTEL_EXPORTER_OTLP_LOGS_HEADERS: "\[hidden\]" -> ""/);
+  assert.doesNotMatch(out.stdout, /example-old-(generic|logs)-key/, "third-party credentials stay hidden in the plan");
   assert.match(out.stdout, /Every other setting in the file stays exactly as it is/);
   assert.equal(read().env.OTEL_LOGS_EXPORTER, "none", "plan still never writes");
+  assert.equal(read().env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, "https://collector.example.test/v1/logs", "the endpoint changes only when apply is requested");
   out = run("apply");
   assert.equal(out.code, 0);
   assert.doesNotMatch(out.stdout, /nsc_oldtoken/);
+  assert.doesNotMatch(out.stdout, /example-old-(generic|logs)-key/, "apply output also hides third-party credentials");
   assert.match(out.stdout, /The backup holds everything the file held/);
   const applied = read();
   assert.deepEqual(applied.enabledPlugins, { x: true });
   assert.equal(applied.env.FOO, "bar");
   assert.equal(applied.env.OTEL_LOGS_EXPORTER, "otlp");
+  assert.equal(applied.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, "https://mcp.nosphera.com/otlp/v1/logs", "the helper's token cannot go to the old logs endpoint");
+  assert.equal(applied.env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL, "http/json");
+  assert.equal(applied.env.OTEL_EXPORTER_OTLP_HEADERS, "");
+  assert.equal(applied.env.OTEL_EXPORTER_OTLP_LOGS_HEADERS, "");
+  assert.equal(applied.env.BETA_TRACING_ENDPOINT, "", "detailed beta tracing cannot redirect logs to the old collector");
+  assert.equal(applied.env.ENABLE_BETA_TRACING_DETAILED, "1", "unrelated settings are preserved");
   const firstBackup = `${settings}.before-nosphera-insights`;
   assert.equal(JSON.parse(fs.readFileSync(firstBackup, "utf8")).env.OTEL_LOGS_EXPORTER, "none", "the backup is the file as it was");
   assert.match(fs.readFileSync(settings, "utf8"), /\n$/, "ends with a newline");

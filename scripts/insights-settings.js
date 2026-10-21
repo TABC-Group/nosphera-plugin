@@ -26,6 +26,9 @@ const path = require("node:path");
 
 // From https://nosphera.com/learn/how-to-switch-on-insights. Events only: metrics and
 // traces would repeat the same numbers and use up the daily limit.
+// Pin the logs overrides and clear old credentials/routing as documented at
+// https://code.claude.com/docs/en/monitoring-usage#common-configuration-variables.
+// Otherwise a prior logs endpoint could receive the Nosphera helper's token.
 const ENV = {
   CLAUDE_CODE_ENABLE_TELEMETRY: "1",
   OTEL_LOGS_EXPORTER: "otlp",
@@ -33,6 +36,11 @@ const ENV = {
   OTEL_TRACES_EXPORTER: "none",
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://mcp.nosphera.com/otlp",
+  OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/json",
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://mcp.nosphera.com/otlp/v1/logs",
+  OTEL_EXPORTER_OTLP_HEADERS: "",
+  OTEL_EXPORTER_OTLP_LOGS_HEADERS: "",
+  BETA_TRACING_ENDPOINT: "",
   OTEL_LOG_ASSISTANT_RESPONSES: "0",
   OTEL_METRICS_INCLUDE_SESSION_ID: "false",
   OTEL_METRICS_INCLUDE_ACCOUNT_UUID: "false",
@@ -137,8 +145,10 @@ function plan(existing, block) {
       warnings.push(`env.${key} is set to ${shown(value)}: Claude Code would send content with its events. Nosphera drops content on arrival, but remove this setting if you don't want it to leave your machine.`);
     }
   }
-  if (env.OTEL_EXPORTER_OTLP_HEADERS !== undefined) {
-    warnings.push("env.OTEL_EXPORTER_OTLP_HEADERS is already set. It is left as it is; check that it does not point another token at Nosphera.");
+  for (const key of ["OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_LOGS_HEADERS"]) {
+    if (existing.env && existing.env[key]) {
+      warnings.push(`This setup clears env.${key} so another service's credentials are not sent to Nosphera. The private header helper supplies only the tracking code.`);
+    }
   }
 
   const merged = { ...existing, env, otelHeadersHelper: block.otelHeadersHelper };
@@ -197,8 +207,10 @@ function writeSettings(file, text) {
 
 function describe(changes) {
   return changes.map((change) => {
-    if (change.kind === "add") return `+ ${change.key} = ${shown(change.to)}`;
-    if (change.kind === "change") return `~ ${change.key}: ${shown(change.from)} -> ${shown(change.to)}`;
+    // Static headers can hold arbitrary third-party keys, not just nsc_/Bearer.
+    const display = (value) => /_HEADERS$/.test(change.key) && value ? '"[hidden]"' : shown(value);
+    if (change.kind === "add") return `+ ${change.key} = ${display(change.to)}`;
+    if (change.kind === "change") return `~ ${change.key}: ${display(change.from)} -> ${display(change.to)}`;
     return `= ${change.key} (already set)`;
   });
 }
