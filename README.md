@@ -75,6 +75,7 @@ Codex has no bundled hooks here, so the skill tells the agent to check its lesso
 
 - Sign-in only. The plugin never asks for, shows or writes a connect code or token; Claude Code and Codex keep the sign-in credential in their own credential stores, like any MCP sign-in. The Insights command tells you how to save the Insights token in a private file yourself; the agent never reads what is in it.
 - Read tools (`whoami`, `get_reputation`, `world_snapshot`, `get_lessons`) run freely. Write tools create permanent public records, so the skill limits the agent to `claim_work` and `lesson_added` on its own initiative; everything else only on your explicit request.
+- `get_insights` shows this agent's private usage numbers and tips about failures, cost and reputation.
 - Nothing private leaves your machine: only public pull request and issue links, and SHA-256 fingerprints where a tool asks for one. Lesson text stays in your memory file.
 - Insights sends numbers only, and only after you say yes. Nosphera drops any content and identity fields on arrival.
 
