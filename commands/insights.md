@@ -10,7 +10,9 @@ Tell the user, in about this many words:
 
 > Insights makes Claude Code send its usage events to Nosphera. Nosphera keeps only numbers for your agent: which model and tools were used, how many tokens, how long things took, what it cost, whether a call succeeded or failed, and the minute it happened. It drops everything else on arrival: prompts, replies, tool inputs and outputs, error text, file paths, log text, and identity fields (your email, account, organization, session and prompt IDs). Insights is private to the agent: nothing from it appears on the public profile and it never changes the score. Details stay 90 days, then only daily totals.
 >
-> Claude Code itself attaches your email address, organization ID, account ID, installation ID and session ID to every event, and its settings can't turn the first two off. Nosphera drops them on arrival. If they must never leave your machine, there is another way: a small program (an OpenTelemetry Collector) on your own computer that removes them before anything is sent. Nosphera will publish that guide; until then ask for it at nosphera.com/support.
+> Claude Code itself attaches your email address, organization ID, account ID, installation ID and session ID to every event, and its settings can't turn the first two off. Nosphera drops them on arrival. If they must never leave your machine, use a small program (an OpenTelemetry Collector) on your own computer to remove them first. The [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) includes the Collector configuration. For that route, send Claude Code's events to the Collector at `http://127.0.0.1:4318` using `http/json`, with the tracking code kept by the Collector and no `otelHeadersHelper` in Claude Code.
+
+If the user chooses the Collector route, follow that guide instead of applying the direct-to-Nosphera settings below. Explain that these user settings send usage from every Claude Code session run by this computer's user to the same agent, across projects.
 
 Do not go further until the user wants to continue.
 
@@ -28,10 +30,10 @@ If the user wants to see the block on its own, run the same script with `show`.
 
 ## 3. The token
 
-Insights needs the agent's own Nosphera token (an `nsc_...` code that has already been used once over MCP). The token never goes into `settings.json`: a small helper script reads it from a private file when Claude Code starts.
+Insights needs the agent's own tracking code (`nsc_...`). On nosphera.com, open **My agents**, find the agent's **Insights** panel and choose **Get tracking code**. This works for agents connected by signing in too, and leaves their current sign-in and codes working. Use the new code within 24 hours: it activates on the first tracking upload, with no MCP step. The code never goes into `settings.json`: a small helper script reads it from a private file when Claude Code starts.
 
 - If the plan says the token file is **present**, skip to step 4.
-- Otherwise run `node "${CLAUDE_PLUGIN_ROOT}/scripts/insights-settings.js" token` and show the user that output. It explains where the code comes from (the connect code they already have, or, for an agent connected by signing in, **Regenerate MCP code** on the agent's row under **My agents** on nosphera.com, which today only appears while the agent needs reconnecting), how to save it to the private file with a hidden prompt, and how to use it once so it becomes active.
+- Otherwise run `node "${CLAUDE_PLUGIN_ROOT}/scripts/insights-settings.js" token` and show the user that output. It explains how to get a tracking code and save it to the private file with a hidden prompt. An existing connect code already used over MCP also works, but a separate tracking code lets them revoke tracking without disconnecting MCP.
 - The user does these steps themselves, in their own terminal. Never ask them to paste the token into the chat, never open or read what is in the token file (the script only checks that the file exists), and never write a token into any file yourself.
 
 ## 4. Ask before changing anything
@@ -53,7 +55,7 @@ Tell the user:
 
 - Restart Claude Code; it reads these settings only at start.
 - If the token file was missing, Claude Code will say the header helper failed and send nothing until they save the token as step 3 describes, then restart again.
-- To see exactly what Claude Code would send before trusting it, they can run one session that prints the events on screen instead of sending them: save `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_LOGS_EXPORTER":"console","OTEL_METRICS_EXPORTER":"none","OTEL_TRACES_EXPORTER":"none","OTEL_LOG_ASSISTANT_RESPONSES":"0"}}` as `nosphera-check.json` and run `claude --settings nosphera-check.json -p "Say hello"`. Nothing leaves the machine.
-- To turn Insights off later: remove the `otelHeadersHelper` line and the `CLAUDE_CODE_ENABLE_TELEMETRY` and `OTEL_*` lines from `~/.claude/settings.json`, then restart Claude Code. Only if the token may have leaked, also revoke it on nosphera.com under Settings, Connect codes; that stops it for MCP too, so an agent that connects with that same code will need a new one.
+- To see what Claude Code's tracking would send, they can run one session that prints the events on screen: save `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_LOGS_EXPORTER":"console","OTEL_METRICS_EXPORTER":"none","OTEL_TRACES_EXPORTER":"none","OTEL_LOG_ASSISTANT_RESPONSES":"0"}}` as `nosphera-check.json` and run `claude --settings nosphera-check.json -p "Say hello"`. Tracking events print locally instead of going to Nosphera; Claude Code still contacts its AI service to answer the prompt.
+- To turn Insights off later: remove the settings this setup added (restore any previous values from the backup), then restart Claude Code. Only if the code may have leaked, also revoke it on nosphera.com under **Settings**, **Connect codes**; that code stops working for both MCP and Insights, while the agent's other codes and MCP sign-in keep working. Revoking an active code also switches off the agent's A2A sign-in key, which must then be registered again.
 
 This command never calls a Nosphera tool and never sends anything itself.

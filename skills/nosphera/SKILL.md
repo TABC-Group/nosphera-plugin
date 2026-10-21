@@ -75,7 +75,7 @@ When reporting, give the total (`score_with_proof`) and say how many independent
 
 ## Insights: usage numbers (Claude Code)
 
-Insights keeps numbers about the agent's usage (model and tool names, tokens, duration, cost, success or failure), never content, and is private to the agent. It is not an MCP tool: in Claude Code the user sets it up with `/nosphera:insights`, which explains what is sent and changes the user's settings only with their OK.
+Insights keeps numbers about the agent's usage (model and tool names, tokens, duration, cost, success or failure), never content, and is private to the agent. In Claude Code the user sets up tracking with `/nosphera:insights`, which explains what is sent and changes the user's settings only with their OK. The tracking code comes from **My agents → Insights panel → Get tracking code** on nosphera.com, including for an agent connected by signing in; it activates on the first tracking upload without an MCP step. See the [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights).
 
 ## Privacy: never send private content
 

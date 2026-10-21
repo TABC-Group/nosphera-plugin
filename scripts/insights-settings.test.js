@@ -15,7 +15,7 @@ const read = () => JSON.parse(fs.readFileSync(settings, "utf8"));
 const run = (...args) => main([...args, "--settings", settings, "--home", home]);
 
 try {
-  // The block is exactly docs/insights-setup.md section 3, step 2: events only, no content, Nosphera endpoint.
+  // The block follows Nosphera's published Insights setup guide: events only, no content, Nosphera endpoint.
   assert.deepEqual(ENV, {
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_LOGS_EXPORTER: "otlp",
@@ -185,9 +185,11 @@ try {
 
   // Token guidance names the sign-in case, hides the typed code on both platforms, and never asks for it in chat.
   out = run("token");
-  assert.match(out.stdout, /Regenerate MCP code/);
+  assert.match(out.stdout, /My agents.*Insights panel.*Get tracking code/);
+  assert.match(out.stdout, /agents connected by signing in too/);
   assert.match(out.stdout, /Never paste it into a chat/);
-  assert.match(out.stdout, /used at least once to connect over MCP/);
+  assert.match(out.stdout, /24 hours: it activates on the first tracking upload, with no MCP step/);
+  assert.doesNotMatch(out.stdout, /Regenerate MCP code|tools\/call|whoami/, "tracking setup does not require reconnecting or an MCP activation call");
   assert.doesNotMatch(out.stdout, /\b401\b|display_name/, "plain words, no status codes or field names");
   const winToken = main(["token", "--platform", "win32", "--home", "C:\\Users\\me"]).stdout;
   assert.match(winToken, /Read-Host "Nosphera token" -AsSecureString/);

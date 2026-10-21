@@ -24,7 +24,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-// From docs/insights-setup.md, section 3, step 2. Events only: metrics and
+// From https://nosphera.com/learn/how-to-switch-on-insights. Events only: metrics and
 // traces would repeat the same numbers and use up the daily limit.
 const ENV = {
   CLAUDE_CODE_ENABLE_TELEMETRY: "1",
@@ -49,7 +49,7 @@ const CONTENT_SWITCHES = [
   "OTEL_LOG_RAW_API_BODIES",
 ];
 
-// The header helpers from docs/insights-setup.md, section 3, step 1, plus one
+// The header helpers from the published Insights setup guide, plus one
 // check: when the token file is missing or empty they fail instead of sending
 // an empty token, so Claude Code reports "otelHeadersHelper failed" and the
 // user finds out.
@@ -305,41 +305,25 @@ function commandToken(loc) {
       "  printf '%s\\n' \"$NOSPHERA_TOKEN\" > ~/.config/nosphera/token; unset NOSPHERA_TOKEN",
       "  chmod 600 ~/.config/nosphera/token",
     ];
-  const check = loc.windows
-    ? [
-      `  $token = (Get-Content -Raw "$env:USERPROFILE\\.nosphera\\token").Trim()`,
-      "  Invoke-RestMethod -Method Post -Uri https://mcp.nosphera.com/mcp `",
-      "    -Headers @{ Authorization = \"Bearer $token\"; Accept = \"application/json, text/event-stream\" } `",
-      "    -ContentType \"application/json\" `",
-      "    -Body '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"whoami\",\"arguments\":{}}}' |",
-      "    ConvertTo-Json -Depth 8",
-      "  Remove-Variable token",
-    ]
-    : [
-      "  curl -s https://mcp.nosphera.com/mcp \\",
-      "    -H \"Authorization: Bearer $(cat ~/.config/nosphera/token)\" \\",
-      "    -H \"Content-Type: application/json\" \\",
-      "    -H \"Accept: application/json, text/event-stream\" \\",
-      "    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"whoami\",\"arguments\":{}}}'",
-    ];
   return {
     code: 0,
     stdout: [
-      "Insights uses the agent's own Nosphera token: an nsc_... code that has been used at least once to connect over MCP.",
-      "The token can write to the agent's public record, so keep it in a private file outside any repository. Never paste it into a chat.",
+      "Insights uses the agent's own tracking code, starting with nsc_... .",
+      "Once active, the code can also write to the agent's public record, so keep it in a private file outside any repository. Never paste it into a chat.",
       "",
       "1. Get the code.",
-      "   - Connected with a connect code: it is the nsc_... code you put in the agent's MCP configuration.",
-      "   - Connected by signing in (Claude Code /mcp, Claude, Codex): the sign-in keeps its credential to itself, so you need a second code for the same agent. On nosphera.com open My agents and choose Regenerate MCP code on the agent's row. Right now that button only appears while the agent needs reconnecting, so a signed-in agent that is working may not show it yet.",
-      "   The code is valid for 24 hours until it is first used.",
+      "   On nosphera.com open My agents, find the agent's Insights panel, and choose Get tracking code.",
+      "   This works for agents connected by signing in too. Getting a tracking code leaves the agent's current sign-in and other codes working.",
+      "   Use it within 24 hours: it activates on the first tracking upload, with no MCP step. If it expires before then, get a new one.",
+      "   An existing connect code already used over MCP also works. A separate tracking code can be revoked without disconnecting MCP.",
       "",
       `2. Save it to the private file ${loc.tokenFile}.`,
       ...save,
       "",
-      "3. Use it once against the MCP server, so it becomes active (a code that has never been used is rejected as not signed in, and nothing sent with it is kept). The reply shows the agent's name; your sign-in connection keeps working.",
-      ...check,
+      "3. Finish the Insights settings and restart Claude Code within 24 hours so its first tracking upload activates the code.",
       "",
-      "If the token ever leaks: on nosphera.com, under Settings, Connect codes, choose Revoke next to it. It stops working at once, for MCP and for Insights, so an agent that connects with that same code needs a new one.",
+      "If the code ever leaks: on nosphera.com, under Settings, Connect codes, choose Revoke next to it. That code stops working at once for MCP and Insights; the agent's other codes and MCP sign-in keep working. Revoking an active code also switches off its A2A sign-in key, which must then be registered again.",
+      "Full guide: https://nosphera.com/learn/how-to-switch-on-insights",
     ].join("\n"),
   };
 }
