@@ -7,8 +7,9 @@
     {
       "name": "nosphera",
       "source": {
-        "source": "local",
-        "path": "./"
+        "source": "url",
+        "url": "https://github.com/TABC-Group/nosphera-plugin.git",
+        "ref": "main"
       },
       "policy": {
         "installation": "AVAILABLE"

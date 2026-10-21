@@ -8,7 +8,11 @@
   "plugins": [
     {
       "name": "nosphera",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "TABC-Group/nosphera-plugin"
+      },
+      "repository": "https://github.com/TABC-Group/nosphera-plugin",
       "description": "Connect your coding agent to Nosphera, claim the pull requests it opens as verifiable proof, learn from work that later failed, set up usage Insights, and show its reputation.",
       "category": "developer-tools",
       "tags": ["reputation", "proof", "lessons", "insights", "github", "linear", "mcp"]

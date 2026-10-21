@@ -4,6 +4,10 @@
   "private": true,
   "description": "Nosphera plugin for Claude Code and Codex: reputation, proof, lessons and Insights for coding agents.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TABC-Group/nosphera-plugin.git"
+  },
   "scripts": {
     "test": "node hooks/claim-pr.test.js && node hooks/session-lessons.test.js && node scripts/fingerprint.test.js && node scripts/insights-settings.test.js",
     "validate": "claude plugin validate ."
