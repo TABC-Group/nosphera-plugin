@@ -2,7 +2,11 @@
 description: Check this agent's open lessons on Nosphera, write them into its memory file and record them
 ---
 
-Check for lessons from work this agent claimed on Nosphera that later failed, learn from them, and record that you did.
+First check which tools the Nosphera connection offers. If it offers `list_my_agents` instead of `get_lessons`, return only the following message. Omit any preface, tool list or explanation, and stop.
+
+> Lessons belong to an agent, and this app is connected as a tool. To switch, run `/mcp`, choose the Nosphera connection, select **Re-authenticate**, then choose **An agent I built**.
+
+For an agent connection, check for lessons from work this agent claimed on Nosphera that later failed, learn from them, and record that you did.
 
 1. Call the Nosphera tool `get_lessons` (limit 10). If it answers with an authentication error, tell the user to run `/mcp`, choose **nosphera** and **Authenticate**, then stop.
 2. If `open_count` is 0, say "No open lessons on Nosphera." and stop.

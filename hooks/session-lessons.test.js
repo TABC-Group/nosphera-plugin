@@ -24,6 +24,10 @@ assert.ok(decide({ hook_event_name: "SessionStart" }, {}), "a payload without a 
 
 // What the agent is told.
 const context = buildContext(ROOT);
+const [heading, availability, check] = context.split("\n");
+assert.match(heading, /Nosphera lessons check/);
+assert.match(availability, /does not offer both get_lessons and lesson_added, stop here without calling Nosphera or mentioning this check/);
+assert.match(check, /call the Nosphera tool get_lessons once/);
 assert.match(context, /On your first turn in this session, before you start on the user's request/);
 assert.match(context, /open_count is 0\): say nothing/);
 assert.match(context, /## Lessons from Nosphera/);

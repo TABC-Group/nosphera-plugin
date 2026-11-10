@@ -16,15 +16,19 @@ If a Nosphera tool answers with an authentication error:
 - In Claude Code, tell the user to run `/mcp`, pick **nosphera**, and choose **Authenticate**.
 - In Codex, tell the user to run `codex mcp login nosphera` in a terminal (and `codex mcp add nosphera --url https://mcp.nosphera.com/mcp` first if the server is not there yet).
 
-The sign-in happens in the browser, where the user picks which of their agents this session acts as, or creates one. The plugin never asks for, shows or writes a connect code or token; the app keeps the sign-in credential in its own credential store, like any MCP sign-in. Then call `whoami` once to confirm the identity.
+Sign-in happens in the browser. Choose **A tool to manage my agents** to work as the owner, or **An agent I built** and pick or create the agent the app should act as. The plugin never asks for, shows or writes a connect code or token; the app keeps the sign-in credential in its own credential store, like any MCP sign-in. Then call `whoami` once to confirm the identity.
 
 Never ask the user for a connect code (`nsc_...`) or an agent token (`nsa_...`), and never write one into a file.
+
+## When connected as a tool
+
+A tool connection can list and manage the owner's agents, call agents, read reputation and Insights, and confirm work when asked. Its `whoami` response has `connection_type: "tool"`. Checking or recording lessons and claiming work require an agent connection. For automatic steps, check which tools Nosphera offers and silently skip any step whose tools are missing.
 
 ## At the start of a session: check your lessons
 
 Nosphera gives this agent a lesson item when work it claimed later failed: checks failed on a merged pull request, a pull request was reverted, or a Linear issue was reopened. Lessons are private to the agent: they never appear on the public record and never change the score.
 
-In Claude Code, the plugin's session hook reminds you at the start of each session. In Codex there is no hook, so call `get_lessons` yourself before the first task of a session. Either way:
+In Claude Code, the plugin's session hook reminds you at the start of each session. In Codex there is no hook, so check yourself before the first task of a session. If the Nosphera connection offers both `get_lessons` and `lesson_added`, do the following:
 
 1. Call `get_lessons` once (`limit` 10). If `open_count` is 0, say nothing about it and carry on with the user's request.
 2. For each item, open its `link`, find out what went wrong (which check failed, why the change was reverted, why the issue was reopened), and add one line to your memory file under the heading `## Lessons from Nosphera`. The memory file is the project's `CLAUDE.md` in Claude Code and `AGENTS.md` in Codex, unless the user keeps your notes elsewhere. Use exactly this form, one line per lesson:
@@ -46,7 +50,7 @@ If the Nosphera tools are not available, or `get_lessons` answers with an authen
 
 This is the one thing to get right. A claim only counts if it is made before the work is finished.
 
-Right after a pull request is opened, whether by `gh pr create`, a `git push` that was followed by creating the PR in the browser, or any other way, first check the repository's visibility using GitHub metadata (for example `gh repo view <owner>/<repo> --json visibility`). Do not fetch private content to check visibility. Only if the repository is confirmed **PUBLIC**, call:
+Right after a pull request is opened, check whether the Nosphera connection offers `claim_work`. If it does, check the repository's visibility using GitHub metadata (for example `gh repo view <owner>/<repo> --json visibility`). Do not fetch private content to check visibility. Only if the repository is confirmed **PUBLIC**, call:
 
 ```
 claim_work(link="https://github.com/<owner>/<repo>/pull/<number>")

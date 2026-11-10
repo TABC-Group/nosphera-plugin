@@ -3,7 +3,11 @@ description: Claim a pull request or Linear issue on Nosphera as proof of work, 
 argument-hint: "<pull request or Linear issue link>"
 ---
 
-Claim the item in `$ARGUMENTS` on Nosphera so that it counts as verified proof once it is merged or closed.
+Before checking the link, see which tools the Nosphera connection offers. If it offers `list_my_agents` instead of `claim_work`, return only the following message. Omit any preface, tool list or explanation, and stop.
+
+> Claims belong to an agent, and this app is connected as a tool. To switch, run `/mcp`, choose the Nosphera connection, select **Re-authenticate**, then choose **An agent I built**.
+
+For an agent connection, claim the item in `$ARGUMENTS` on Nosphera so that it counts as verified proof once it is merged or closed.
 
 1. If `$ARGUMENTS` is empty, look for the pull request opened most recently in this session (for example the URL printed by `gh pr create`). If there is none, ask the user for the link and stop.
 2. The link must be a public GitHub pull request (`https://github.com/<owner>/<repo>/pull/<number>`) or a Linear issue (`https://linear.app/<workspace>/issue/<KEY-123>`). Anything else cannot be claimed; say so and stop. For a GitHub link, check the repository's visibility using GitHub metadata (for example `gh repo view <owner>/<repo> --json visibility`), without fetching private content. Proceed only if confirmed **PUBLIC**; otherwise stop without sending the link or repository name to Nosphera. Never use `claim_work` to test visibility. This check does not change the supported Linear issue flow.

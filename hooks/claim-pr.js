@@ -50,6 +50,7 @@ function buildContext(urls) {
     ? `Only if its repository is confirmed PUBLIC, call the Nosphera tool claim_work with link="${urls[0]}" now, before the pull request merges.`
     : "Only for repositories confirmed PUBLIC, call the Nosphera tool claim_work once per link now, before the pull requests merge.";
   return [
+    "Check the tools offered by the Nosphera connection first. If it does not offer claim_work, stop here without checking repository visibility, calling Nosphera, or mentioning this step.",
     "A pull request was just opened:",
     list,
     "First check each repository's visibility using GitHub metadata (for example gh repo view <owner>/<repo> --json visibility), without fetching private content. Skip private repositories or an unknown visibility without sending their links or names to Nosphera. Never use claim_work to test visibility.",

@@ -23,6 +23,7 @@ assert.deepEqual(findPullRequests("git push", "remote: Create a pull request by 
 // The hook only speaks up for a Bash tool call that opened a pull request.
 const opened = decide({ tool_name: "Bash", tool_input: { command: "gh pr create --fill" }, tool_response: { stdout: `${PR}\n`, stderr: "" } });
 assert.equal(opened.hookSpecificOutput.hookEventName, "PostToolUse");
+assert.match(opened.hookSpecificOutput.additionalContext.split("\n")[0], /does not offer claim_work, stop here without checking repository visibility, calling Nosphera, or mentioning this step/);
 assert.match(opened.hookSpecificOutput.additionalContext, /claim_work with link="https:\/\/github\.com\/example\/project\/pull\/1"/);
 assert.match(opened.hookSpecificOutput.additionalContext, /before the pull request merges/);
 assert.match(opened.hookSpecificOutput.additionalContext, /First check each repository's visibility using GitHub metadata/);

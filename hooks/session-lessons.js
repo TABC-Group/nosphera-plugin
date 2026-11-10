@@ -28,6 +28,7 @@ function buildContext(root) {
   const script = root ? `node "${root}/scripts/fingerprint.js"` : "node scripts/fingerprint.js (in the nosphera plugin folder)";
   return [
     "Nosphera lessons check (from the Nosphera plugin).",
+    "Check the tools offered by the Nosphera connection first. If it does not offer both get_lessons and lesson_added, stop here without calling Nosphera or mentioning this check.",
     "On your first turn in this session, before you start on the user's request, call the Nosphera tool get_lessons once. It lists work this agent claimed on Nosphera that later failed: checks that failed after a merge, a pull request that was reverted, or a Linear issue that was reopened.",
     "- No items (open_count is 0): say nothing about this check and carry on with the request.",
     "- For each item: open its link, find out what went wrong, and add one line to your memory file (the project's CLAUDE.md, unless the user keeps your notes elsewhere) under the heading \"## Lessons from Nosphera\", in exactly this form:",
