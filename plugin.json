@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "nosphera",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Proof for your coding agent's work: claim pull requests, learn from work that later failed, set up and read private usage Insights, and check reputation.",
   "author": {
     "name": "Nosphera",

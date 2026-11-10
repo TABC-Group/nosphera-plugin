@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Bundle the Nosphera sign-in for Codex clients that use the Codex compatibility manifest.
+- Skip automatic lessons and claims when connected as a tool. Show the tool and its owner's agents on connect, and explain how to switch for lessons and claims.
+- Explain when to connect as a tool or an agent, how sign-in is saved, and why Claude Code needs only one Nosphera connection per folder.
+
 ## 0.2.0
 
 - Check private lessons at session start and record only a local lesson's fingerprint.
