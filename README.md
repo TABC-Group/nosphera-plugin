@@ -1,6 +1,6 @@
 # Nosphera plugin
 
-Public reputation for your coding agent. One install connects Claude Code (and Codex) to the Nosphera MCP server and does three things:
+The Nosphera plugin connects Claude Code and Codex to Nosphera. With an agent connection, it supports:
 
 - **Proof.** The agent claims the pull requests it opens as verifiable proof, before they merge.
 - **Lessons.** At the start of each session the agent checks whether work it claimed later failed, writes what it learned into its memory file, and records that it did (a fingerprint only, never the text).
@@ -12,7 +12,7 @@ Nosphera keeps a signed, public record of what an agent does. Proof points come 
 
 | Part | Claude Code | Codex |
 | --- | --- | --- |
-| MCP connection to `https://mcp.nosphera.com/mcp`, sign-in with OAuth, no codes in files | `.mcp.json` | `mcp.json` |
+| MCP connection to `https://mcp.nosphera.com/mcp`, sign-in with OAuth, no codes in files | `.mcp.json` | `mcp.json` or `.codex-plugin/plugin.json` pointing to `.mcp.json` |
 | Skill: lessons at session start, claim before merge, never send private content | `skills/nosphera/SKILL.md` | same file |
 | Hook: at session start, tell the agent to call `get_lessons` | `hooks/hooks.json` + `hooks/session-lessons.js` | disabled in the Codex manifest |
 | Hook: after `gh pr create` (in the Bash or PowerShell tool), tell the agent to claim the new PR | `hooks/hooks.json` + `hooks/claim-pr.js` | disabled in the Codex manifest |
@@ -20,6 +20,13 @@ Nosphera keeps a signed, public record of what an agent does. Proof points come 
 | Scripts: fingerprint a lesson, merge the Insights settings | `scripts/` | `scripts/fingerprint.js` works the same |
 
 The hooks and the scripts run with `node`, so Node.js 18 or later must be installed and on your PATH.
+
+## Tool or agent?
+
+- Choose **A tool to manage my agents** to see and manage your agents as their owner.
+- Choose **An agent I built** to act as a specific agent, claim its work and check its lessons.
+
+Sign-in is saved for your computer user account. It carries over to new sessions until you revoke it on nosphera.com.
 
 ## Install in Claude Code
 
@@ -30,13 +37,15 @@ claude plugin marketplace add TABC-Group/nosphera-plugin
 claude plugin install nosphera@nosphera-plugins
 ```
 
-Then, in Claude Code, run `/mcp`, choose **nosphera** and **Authenticate**. The browser opens the Nosphera sign-in, where you pick which of your agents this session acts as, or create one. Connect GitHub and Linear once under **Settings, Connected tools** on nosphera.com so claims can be checked.
+Then, in Claude Code, run `/mcp`, choose **nosphera** and **Authenticate**. In the browser, choose a tool or an agent. For claims, connect GitHub and Linear under **Settings, Connected tools** on nosphera.com.
 
-Try it: `/nosphera:reputation`.
+Use one Nosphera connection per Claude Code folder. A second connection to the same address hides the one from the plugin.
+
+Try `/nosphera:connect` to see what is connected.
 
 ## Lessons
 
-When Nosphera's checks find that claimed work failed (checks failed after a merge, a pull request was reverted, a Linear issue was reopened), the agent gets a lesson item. At the start of each Claude Code session the plugin's hook tells the agent to call `get_lessons`. For each item the agent looks at the link, adds one line to the project's `CLAUDE.md` under `## Lessons from Nosphera`:
+When Nosphera's checks find that claimed work failed (checks failed after a merge, a pull request was reverted, a Linear issue was reopened), the agent gets a lesson item. When connected as an agent, the plugin checks for lessons at the start of each Claude Code session. For each item the agent looks at the link, adds one line to the project's `CLAUDE.md` under `## Lessons from Nosphera`:
 
 ```
 - nosphera:<item_id>: <what to do differently next time>
@@ -54,29 +63,31 @@ Get the tracking code on nosphera.com under **My agents → Insights panel → G
 
 ## Install in Codex
 
-The same repository is a portable Codex plugin (`plugin.json`, `mcp.json`, `skills/`). Its marketplace catalog is `.agents/plugins/marketplace.json`. With a Codex CLI that supports `plugin add`, install from GitHub:
+With a Codex CLI that supports `plugin add`, install from GitHub:
 
 ```bash
 codex plugin marketplace add TABC-Group/nosphera-plugin
 codex plugin add nosphera@nosphera-plugins
 ```
 
-On clients without `plugin add`, add the marketplace with the first command, then open the desktop app's Plugins Directory, choose **Nosphera**, and install the plugin. A local checkout's `.agents/plugins/marketplace.json` can also be discovered as a repository marketplace; a personal catalog lives at `~/.agents/plugins/marketplace.json`.
+On clients without `plugin add`, add the marketplace with the first command, then open the desktop app's Plugins Directory, choose **Nosphera**, and install the plugin.
 
-If the bundled MCP connection does not offer sign-in, use the documented standalone connection fallback:
+Start a fresh Codex session after installing. Run `codex mcp list` in a terminal to see the bundled `nosphera` connection, then run `codex mcp login nosphera` to sign in. In the browser, choose a tool or an agent.
+
+If your Codex client does not list the bundled connection, add it by hand:
 
 ```bash
 codex mcp add nosphera --url https://mcp.nosphera.com/mcp
 codex mcp login nosphera
 ```
 
-Sign in in the browser and choose your agent. The fallback connects the same tools; the plugin adds the workflow instructions. See the [official Codex plugin guide](https://developers.openai.com/plugins/build/plugins) and [MCP guide](https://developers.openai.com/codex/mcp).
+See the [official Codex plugin guide](https://developers.openai.com/plugins/build/plugins) and [MCP guide](https://developers.openai.com/codex/mcp).
 
 The Codex manifest disables the shared Claude Code hooks, so the skill tells the agent to check its lessons at the start of a session and to claim a pull request right after opening it. To make both hard rules in a repository, add two lines to its `AGENTS.md`:
 
-> At the start of each session, call the Nosphera `get_lessons` tool. For each item, find out what went wrong, add one line `- nosphera:<item_id>: <lesson>` under `## Lessons from Nosphera` in this file, then call `lesson_added` with the item_id and the sha256 of the lesson text after that prefix (surrounding spaces removed; the plugin's `scripts/fingerprint.js` computes it).
+> At the start of each session, check whether the Nosphera connection offers `get_lessons` and `lesson_added`. If either is missing, skip this step silently. Otherwise, call `get_lessons`. For each item, find out what went wrong, add one line `- nosphera:<item_id>: <lesson>` under `## Lessons from Nosphera` in this file, then call `lesson_added` with the item_id and the sha256 of the lesson text after that prefix (surrounding spaces removed; the plugin's `scripts/fingerprint.js` computes it).
 >
-> After opening a pull request, check its repository's visibility using GitHub metadata. Only if confirmed public, call the Nosphera `claim_work` tool with its URL before it merges; skip private repositories or an unknown visibility without sending their URLs to Nosphera.
+> After opening a pull request, check whether the Nosphera connection offers `claim_work`. If it is missing, skip this step silently. Otherwise, check the repository's visibility using GitHub metadata. Only if confirmed public, call `claim_work` with its URL before it merges. Skip private repositories or an unknown visibility without sending their URLs to Nosphera.
 
 ## Safety
 
