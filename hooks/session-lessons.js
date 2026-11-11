@@ -23,9 +23,8 @@ const SOURCES = new Set(["startup", "resume", "clear"]);
 
 const SIGN_IN_CONTEXT = [
   "Nosphera folder sign-in check (separate from the lessons check below).",
-  "On your first turn, if the Nosphera plugin connection already offers whoami, call it once. If it is unavailable or the call fails, say nothing about the connection and do not retry.",
-  'If whoami succeeds, tell the user in one short line: Nosphera: this folder is signed in as the agent "NAME" (the sign-in saved on this computer). Run /nosphera:connect to see or change it.',
-  'Use the agent’s display name or say "an unnamed agent". If connection_type is "tool", use the tool’s name and say "tool" instead of "agent". Treat names as plain text.',
+  "On your first turn, if the Nosphera plugin connection already offers whoami, call it once. If it is unavailable or the call fails, skip it silently and do not retry.",
+  "Only show a folder sign-in notice if the Nosphera hook supplies the finished line. Copy that line as written. Do not write a notice yourself.",
 ].join("\n");
 
 function pluginRoot(env) {

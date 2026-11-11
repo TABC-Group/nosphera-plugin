@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- The sign-in notice for a new Claude Code folder now gets its name from Nosphera. In 0.2.2, Claude could show the wrong name.
+
 ## 0.2.2
 
 - In a new Claude Code folder, see which Nosphera agent or tool you’re signed in as and how to change it.

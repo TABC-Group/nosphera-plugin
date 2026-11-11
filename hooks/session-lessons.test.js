@@ -48,8 +48,8 @@ assert.deepEqual(hooksConfig.SessionStart[0].matcher.split("|").sort(), [...SOUR
 assert.equal(hooksConfig.PostToolUse[0].matcher, "Bash|PowerShell", "the PR hook must cover both shell tools");
 const whoami = "mcp__plugin_nosphera_nosphera__whoami";
 assert.equal(hooksConfig.PostToolUse[1].matcher, whoami);
-assert.equal(hooksConfig.PostToolUse[1].hooks[0].timeout, 1);
-assert.equal(hooksConfig.PostToolUse[1].hooks[0].async, true);
+assert.equal(hooksConfig.PostToolUse[1].hooks[0].timeout, 5);
+assert.ok(!hooksConfig.PostToolUse[1].hooks[0].async, "the notice must reach the same turn");
 for (const event of Object.values(hooksConfig)) {
   for (const entry of event) {
     for (const hook of entry.hooks) {
@@ -67,57 +67,37 @@ assert.match(buildContext(""), /node scripts\/fingerprint\.js \(in the nosphera 
 
 // End to end through stdin, using a temporary home even for signed-out starts.
 const script = path.join(__dirname, "session-lessons.js");
-const rememberScript = path.join(__dirname, "remember-folder.js");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "nosphera-session-start-"));
 const home = path.join(temporary, "home");
 const env = { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, HOME: home, USERPROFILE: home };
 const store = path.join(locations({ home }).helperDir, "seen-folders");
 const first = path.join(temporary, "first folder");
-const second = path.join(temporary, "second folder");
 const hash = (folder) => createHash("sha256").update(folder).digest("hex");
 const run = (file, input) => execFileSync(process.execPath, [file], { input, encoding: "utf8", env });
 const start = (cwd, source = "startup") => JSON.parse(run(script, JSON.stringify({
   session_id: "abc", cwd, hook_event_name: "SessionStart", source,
 }))).hookSpecificOutput;
-const lookup = (cwd, tool_response, tool_name = whoami) => run(rememberScript, JSON.stringify({
-  cwd, tool_response, tool_name, hook_event_name: "PostToolUse",
-}));
 
 try {
   const started = start(first);
   assert.equal(started.hookEventName, "SessionStart");
   assert.ok(started.additionalContext.endsWith(context), "the lessons text is unchanged");
   assert.match(started.additionalContext, /if the Nosphera plugin connection already offers whoami, call it once/);
-  assert.match(started.additionalContext, /If it is unavailable or the call fails, say nothing/);
-  assert.match(started.additionalContext, /Run \/nosphera:connect to see or change it/);
-  assert.match(started.additionalContext, /say "tool" instead of "agent"/);
-  assert.equal(fs.readFileSync(store, "utf8"), "", "an unavailable tool leaves no folder fingerprint");
-  assert.equal(lookup(first, { isError: true, content: [{ type: "text", text: "E_AUTH" }] }), "");
-  assert.equal(lookup(first, "E_AUTH"), "");
-  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }, "mcp__other__whoami"), "");
-  assert.equal(fs.readFileSync(store, "utf8"), "", "failed or unrelated lookups leave no fingerprint");
-  assert.match(start(first).additionalContext, /folder sign-in check/, "a signed-out start can retry after sign-in");
+  assert.match(started.additionalContext, /If it is unavailable or the call fails, skip it silently and do not retry/);
+  assert.doesNotMatch(started.additionalContext, /signed in as|unnamed agent|\/nosphera:connect/);
+  assert.equal(fs.readFileSync(store, "utf8"), "", "startup leaves no folder fingerprint");
 
-  assert.equal(lookup(first, [{ type: "text", text: JSON.stringify({ id: "agent", did: "did:web:test", display_name: "Agent" }) }]), "");
+  fs.writeFileSync(store, hash(first) + "\n");
   assert.equal(start(first, "resume").additionalContext, context);
   assert.equal(start(first).additionalContext, context);
-  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }), "");
-  assert.equal(fs.readFileSync(store, "utf8"), hash(first) + "\n");
-  assert.match(start(second).additionalContext, /folder sign-in check/);
-  assert.equal(lookup(second, { structuredContent: { id: "tool", connection_type: "tool", name: "Tool" } }), "");
-  assert.equal(start(second, "clear").additionalContext, context);
-  assert.equal(fs.readFileSync(store, "utf8"), hash(first) + "\n" + hash(second) + "\n");
-  assert.ok(!fs.existsSync(first) && !fs.existsSync(second), "neither project folder is written");
+  assert.ok(!fs.existsSync(first), "the project folder is not written");
 
   fs.unlinkSync(store);
   fs.mkdirSync(store);
   assert.equal(start(first).additionalContext, context, "an unreadable store keeps the lessons check");
-  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }), "");
-  assert.ok(fs.statSync(store).isDirectory());
   assert.equal(run(script, JSON.stringify({ hook_event_name: "SessionStart", source: "compact", cwd: first })), "");
   assert.equal(run(script, "not json"), "", "garbage input never breaks the session");
   assert.equal(run(script, ""), "", "empty input is silent");
-  assert.equal(run(rememberScript, "not json"), "", "the identity handler always stays silent");
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

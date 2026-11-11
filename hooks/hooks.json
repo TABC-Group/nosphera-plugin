@@ -35,8 +35,7 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/remember-folder.js"],
-            "timeout": 1,
-            "async": true
+            "timeout": 5
           }
         ]
       }

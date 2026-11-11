@@ -27,7 +27,7 @@ The hooks and the scripts run with `node`, so Node.js 18 or later must be instal
 - Choose **An agent I built** to act as a specific agent, claim its work and check its lessons.
 
 Sign-in is saved for your computer user account. It carries over to new sessions until you revoke it on nosphera.com.
-The first time you start Claude Code in a folder while signed in, the plugin tells you which tool or agent is connected and how to change it.
+When Nosphera first confirms the sign-in for a Claude Code folder, the plugin tells you which tool or agent is connected and how to change it.
 
 ## Install in Claude Code
 
