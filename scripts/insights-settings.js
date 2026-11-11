@@ -21,7 +21,7 @@
 
 const fs = require("node:fs");
 const { execFileSync, spawn } = require("node:child_process");
-const { constants, generateKeyPairSync, privateDecrypt, randomBytes, timingSafeEqual } = require("node:crypto");
+const { constants, createHash, generateKeyPairSync, privateDecrypt, randomBytes, timingSafeEqual } = require("node:crypto");
 const { createServer } = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
@@ -347,6 +347,32 @@ const TRACKING_TIMEOUT = 5 * 60_000;
 const OTEL_BEGIN = "# BEGIN Nosphera Insights tracking";
 const OTEL_END = "# END Nosphera Insights tracking";
 const CONFIG_ERROR = "Could not update your tracking settings. Check that your settings file is writable, then start again.";
+const DONE_STYLE = `
+  :root { color-scheme: light dark; }
+  body { margin: 0; background: Canvas; color: CanvasText; font: 1rem/1.6 system-ui, sans-serif; }
+  main { max-width: 34rem; margin: clamp(1.5rem, 8vw, 5rem) auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.75rem; line-height: 1.2; }
+  ol { padding-inline-start: 1.5rem; }
+  li + li { margin-top: .5rem; }
+  a { color: LinkText; text-underline-offset: .18em; }
+  a:hover, a:active { text-decoration-thickness: .15em; }
+  a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+`;
+const DONE_STYLE_HASH = createHash("sha256").update(DONE_STYLE).digest("base64");
+
+function trackingDonePage(content) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Nosphera tracking</title>
+  <style>${DONE_STYLE}</style>
+  <script>history.replaceState(null, "", "/done")</script>
+</head>
+<body><main>${content}</main></body>
+</html>`;
+}
 
 function trackingAddresses() {
   const site = new URL(process.env.NOSPHERA_TRACKING_SITE || "https://nosphera.com");
@@ -590,22 +616,37 @@ async function switchOnTracking(args, {
         return;
       }
       completed = true;
-      let message;
+      let content;
       let result;
       try {
         const backup = install(credential);
-        message = "Tracking settings saved. Restart " + label + " to start sending usage numbers.";
-        result = { code: 0, stdout: backup ? message + "\nPrevious settings saved to " + backup : message };
+        const restart = "Restart " + label + " to start sending usage numbers.";
+        const destination = credential.startsWith("nsu_")
+          ? "In My agents, go to Your tools and open your tool’s card."
+          : "In My agents, open your agent’s Insights tab.";
+        const myAgents = new URL("/my-agents", site);
+        const linkedDestination = destination.replace("My agents", `<a href="${myAgents}">My agents</a>`);
+        content = `<h1>Tracking settings saved</h1>
+<ol>
+  <li>${restart}</li>
+  <li>Send one prompt.</li>
+  <li>${linkedDestination}</li>
+</ol>
+<p>The first numbers show within about a minute.</p>`;
+        const lines = ["Tracking settings saved. " + restart];
+        if (backup) lines.push("Previous settings saved to " + backup);
+        lines.push(destination);
+        result = { code: 0, stdout: lines.join("\n") };
       } catch {
-        message = CONFIG_ERROR;
-        result = { code: 1, stderr: message };
+        content = `<h1>${CONFIG_ERROR}</h1>`;
+        result = { code: 1, stderr: CONFIG_ERROR };
       }
       response.writeHead(result.code === 0 ? 200 : 500, {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+        "Content-Security-Policy": `default-src 'none'; script-src 'unsafe-inline'; style-src 'sha256-${DONE_STYLE_HASH}'; frame-ancestors 'none'`,
         "X-Content-Type-Options": "nosniff",
       });
-      response.end('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nosphera tracking</title><script>history.replaceState(null, "", "/done")</script><h1>' + message + "</h1></html>", () => finish(result));
+      response.end(trackingDonePage(content), () => finish(result));
     });
     server.once("error", () => finish({ code: 1, stderr: "Could not start tracking setup on this computer. Try again from your app." }));
     server.listen(0, "127.0.0.1", () => {

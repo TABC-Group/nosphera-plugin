@@ -252,10 +252,11 @@ try {
 }
 
 async function testBrowserSetup() {
-  const { constants, createPublicKey, publicEncrypt, randomBytes } = require("node:crypto");
+  const { constants, createHash, createPublicKey, publicEncrypt, randomBytes } = require("node:crypto");
   const { switchOnTracking, codexConfig } = require("./insights-settings");
   const isolated = fs.mkdtempSync(path.join(tmpdir(), "nosphera-browser-setup-"));
-  const credential = "nsu_" + "a".repeat(64); // TEST ONLY
+  const toolCredential = "nsu_" + "a".repeat(64); // TEST ONLY
+  const agentCredential = "nsc_" + "a".repeat(32); // TEST ONLY
   const codex = path.join(isolated, "config.toml");
   const claude = path.join(isolated, "settings.json");
   const unrelated = 'model = "test"\r\nexamples = [\r\n  ["otel"]\r\n]\r\n[profiles.work]\r\ninstructions = """\r\n[otel]\r\n# BEGIN Nosphera Insights tracking\r\n"""\r\n';
@@ -266,6 +267,7 @@ async function testBrowserSetup() {
   fs.writeFileSync(claude, oldClaude);
   const results = [];
   const originalPath = process.env.PATH;
+  const originalSite = process.env.NOSPHERA_TRACKING_SITE;
   try {
     if (process.platform === "win32") {
       // Stand-ins that reject the Windows arguments used by tracking setup.
@@ -280,14 +282,28 @@ async function testBrowserSetup() {
       assert.ifError(lookup.error);
       assert.notEqual(lookup.status, 0, "a bare whoami.exe call hits the stand-in");
     }
-    for (const [app, settings] of [["codex", codex], ["claude_code", claude]]) {
+    for (const { app, settings, credential, origin, label, destination, fail } of [
+      {
+        app: "codex", settings: codex, credential: agentCredential, origin: "https://dev.nosphera.com",
+        label: "Codex", destination: "In My agents, open your agent’s Insights tab.",
+      },
+      {
+        app: "claude_code", settings: claude, credential: toolCredential, origin: "https://nosphera.com",
+        label: "Claude Code", destination: "In My agents, go to Your tools and open your tool’s card.",
+      },
+      {
+        app: "codex", settings: codex, credential: agentCredential, origin: "https://dev.nosphera.com", fail: true,
+      },
+    ]) {
+      process.env.NOSPHERA_TRACKING_SITE = origin;
+      const before = fs.readFileSync(settings, "utf8");
       let opened;
       const browser = new Promise((resolve) => { opened = resolve; });
       const finished = switchOnTracking({ app, settings, home: isolated }, {
         openBrowser: opened, write: (line) => results.push(line), timeout: 5000,
       });
       const page = new URL(await browser);
-      assert.equal(page.origin, "https://nosphera.com");
+      assert.equal(page.origin, origin);
       assert.equal(page.pathname, "/my-agents/tracking");
       const { port, state, key, expires } = Object.fromEntries(page.searchParams);
       const callback = new URL("http://127.0.0.1:" + port + "/finish");
@@ -300,32 +316,59 @@ async function testBrowserSetup() {
       assert.equal((await fetch(callback)).status, 404);
       callback.search = new URLSearchParams({ state, sealed: randomBytes(256).toString("base64url") });
       assert.equal((await fetch(callback)).status, 404);
-      assert.equal(fs.readFileSync(settings, "utf8"), app === "codex" ? original : oldClaude);
+      assert.equal(fs.readFileSync(settings, "utf8"), before);
+      if (fail) fs.appendFileSync(settings, "# Changed while setup was open\n");
       callback.searchParams.set("sealed", seal);
       const response = await fetch(callback);
-      assert.equal(response.status, 200);
-      assert.ok(!(await response.text()).includes(credential));
+      assert.equal(response.status, fail ? 500 : 200);
+      const html = await response.text();
+      assert.ok(!html.includes(credential));
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+      const styleHash = createHash("sha256").update(css).digest("base64");
+      assert.equal(response.headers.get("content-security-policy"),
+        `default-src 'none'; script-src 'unsafe-inline'; style-src 'sha256-${styleHash}'; frame-ancestors 'none'`);
+      assert.match(css, /color-scheme: light dark/);
+      assert.ok(html.includes('history.replaceState(null, "", "/done")'));
       const done = await finished;
-      assert.equal(done.code, 0);
       assert.ok(!JSON.stringify(done).includes(credential));
-      assert.equal(fs.readFileSync(settings + ".before-nosphera-insights", "utf8"), app === "codex" ? original : oldClaude);
       await assert.rejects(fetch(callback));
+      if (fail) {
+        assert.equal(done.code, 1);
+        assert.match(done.stderr, /Could not update your tracking settings/);
+        assert.ok(html.includes(`<h1>${done.stderr}</h1>`));
+        assert.doesNotMatch(html, /<ol>|<a href=/);
+        assert.equal(fs.readFileSync(settings, "utf8"), before + "# Changed while setup was open\n");
+        fs.writeFileSync(settings, before);
+        continue;
+      }
+      assert.equal(done.code, 0);
+      assert.match(html, /<h1>Tracking settings saved<\/h1>/);
+      assert.ok(html.includes(`<li>Restart ${label} to start sending usage numbers.</li>`));
+      assert.ok(html.includes("<li>Send one prompt.</li>"));
+      assert.ok(html.includes(`<li>${destination.replace("My agents", `<a href="${origin}/my-agents">My agents</a>`)}</li>`));
+      assert.match(html, /The first numbers show within about a minute/);
+      assert.equal(done.stdout.split("\n").at(-1), destination);
+      assert.equal(fs.readFileSync(settings + ".before-nosphera-insights", "utf8"), before);
     }
     const next = fs.readFileSync(codex, "utf8");
     assert.ok(next.startsWith(unrelated));
     assert.equal(next.split("[otel]").length, 3, "one real table plus one in the instruction string");
-    assert.ok(next.includes("Bearer " + credential));
+    assert.ok(next.includes("Bearer " + agentCredential));
     assert.ok(!next.includes("https://old.example.test"));
-    assert.equal(codexConfig(next, ENV.OTEL_EXPORTER_OTLP_ENDPOINT, credential), next);
+    assert.equal(codexConfig(next, "https://dev-mcp.nosphera.com/otlp", agentCredential), next);
     const claudeSettings = JSON.parse(fs.readFileSync(claude, "utf8"));
     assert.equal(claudeSettings.theme, "dark");
     assert.equal(claudeSettings.env.MY_SETTING, "kept");
     assert.equal(claudeSettings.env.OTEL_LOG_TOOL_CONTENT, "0");
-    assert.ok(!JSON.stringify(claudeSettings).includes(credential));
+    assert.ok(!JSON.stringify(claudeSettings).includes(toolCredential));
     const token = path.join(locations({ home: isolated }).helperDir, "tracking-token");
-    assert.ok(fs.readFileSync(token, "utf8").trim() === credential);
+    assert.ok(fs.readFileSync(token, "utf8").trim() === toolCredential);
     if (process.platform !== "win32") assert.equal(fs.statSync(token).mode & 0o777, 0o600);
-    assert.ok(!results.join("").includes(credential));
+    assert.ok(!results.join("").includes(agentCredential));
+    assert.ok(!results.join("").includes(toolCredential));
     const unused = path.join(isolated, "unused.toml");
     const timedOut = await switchOnTracking({ app: "codex", settings: unused, home: isolated }, {
       openBrowser: () => {}, write: () => {}, timeout: 25,
@@ -335,6 +378,8 @@ async function testBrowserSetup() {
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
+    if (originalSite === undefined) delete process.env.NOSPHERA_TRACKING_SITE;
+    else process.env.NOSPHERA_TRACKING_SITE = originalSite;
     fs.rmSync(isolated, { recursive: true, force: true });
   }
 }
