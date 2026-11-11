@@ -27,6 +27,18 @@
             "statusMessage": "Checking for a new pull request to claim on Nosphera"
           }
         ]
+      },
+      {
+        "matcher": "mcp__plugin_nosphera_nosphera__whoami",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/remember-folder.js"],
+            "timeout": 1,
+            "async": true
+          }
+        ]
       }
     ]
   }

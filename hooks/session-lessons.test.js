@@ -2,15 +2,19 @@
 
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { decide, buildContext, SOURCES } = require("./session-lessons");
+const { locations } = require("../scripts/insights-settings");
 
 const ROOT = "C:/Users/me/.claude/plugins/cache/nosphera-plugins/nosphera/0.2.0";
 
 // Which session starts get the check.
 assert.deepEqual([...SOURCES].sort(), ["clear", "resume", "startup"]);
 for (const source of ["startup", "resume", "clear"]) {
-  const out = decide({ hook_event_name: "SessionStart", source, session_id: "s1", cwd: "/repo" }, { CLAUDE_PLUGIN_ROOT: ROOT });
+  const out = decide({ hook_event_name: "SessionStart", source, session_id: "s1" }, { CLAUDE_PLUGIN_ROOT: ROOT });
   assert.equal(out.hookSpecificOutput.hookEventName, "SessionStart", source);
   assert.match(out.hookSpecificOutput.additionalContext, /call the Nosphera tool get_lessons once/, source);
 }
@@ -39,15 +43,19 @@ assert.match(context, /authentication error, skip the check, do not retry/);
 assert.doesNotMatch(context, /get_insights/, "only tools that are live today are named");
 
 // hooks.json must agree with the script: same session sources, and every hook script it names exists.
-const hooksConfig = JSON.parse(require("node:fs").readFileSync(path.join(__dirname, "hooks.json"), "utf8")).hooks;
+const hooksConfig = JSON.parse(fs.readFileSync(path.join(__dirname, "hooks.json"), "utf8")).hooks;
 assert.deepEqual(hooksConfig.SessionStart[0].matcher.split("|").sort(), [...SOURCES].sort(), "the matcher and SOURCES must list the same session starts");
 assert.equal(hooksConfig.PostToolUse[0].matcher, "Bash|PowerShell", "the PR hook must cover both shell tools");
+const whoami = "mcp__plugin_nosphera_nosphera__whoami";
+assert.equal(hooksConfig.PostToolUse[1].matcher, whoami);
+assert.equal(hooksConfig.PostToolUse[1].hooks[0].timeout, 1);
+assert.equal(hooksConfig.PostToolUse[1].hooks[0].async, true);
 for (const event of Object.values(hooksConfig)) {
   for (const entry of event) {
     for (const hook of entry.hooks) {
       assert.equal(hook.command, "node");
       const target = hook.args[0].replace("${CLAUDE_PLUGIN_ROOT}", path.join(__dirname, ".."));
-      assert.ok(require("node:fs").existsSync(target), `hook script missing: ${hook.args[0]}`);
+      assert.ok(fs.existsSync(target), `hook script missing: ${hook.args[0]}`);
     }
   }
 }
@@ -57,19 +65,61 @@ assert.ok(buildContext("C:/x/y").includes('node "C:/x/y/scripts/fingerprint.js"'
 assert.ok(decide({ source: "startup" }, { CLAUDE_PLUGIN_ROOT: "C:\\Users\\me\\plugin\\" }).hookSpecificOutput.additionalContext.includes('node "C:/Users/me/plugin/scripts/fingerprint.js"'));
 assert.match(buildContext(""), /node scripts\/fingerprint\.js \(in the nosphera plugin folder\)/);
 
-// End to end through stdin, the way Claude Code runs it: JSON in, JSON out, exit 0, silent when nothing to do.
+// End to end through stdin, using a temporary home even for signed-out starts.
 const script = path.join(__dirname, "session-lessons.js");
-const env = { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT };
-const started = execFileSync(process.execPath, [script], {
-  input: JSON.stringify({ session_id: "abc", transcript_path: "/tmp/t.jsonl", cwd: "/repo", permission_mode: "default", hook_event_name: "SessionStart", source: "startup", model: "claude-opus-5-5" }),
-  encoding: "utf8",
-  env,
-});
-const parsed = JSON.parse(started);
-assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
-assert.ok(parsed.hookSpecificOutput.additionalContext.includes(ROOT));
-assert.equal(execFileSync(process.execPath, [script], { input: JSON.stringify({ hook_event_name: "SessionStart", source: "compact" }), encoding: "utf8", env }), "");
-assert.equal(execFileSync(process.execPath, [script], { input: "not json", encoding: "utf8", env }), "", "garbage input never breaks the session");
-assert.equal(execFileSync(process.execPath, [script], { input: "", encoding: "utf8", env }), "", "empty input is silent");
+const rememberScript = path.join(__dirname, "remember-folder.js");
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "nosphera-session-start-"));
+const home = path.join(temporary, "home");
+const env = { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT, HOME: home, USERPROFILE: home };
+const store = path.join(locations({ home }).helperDir, "seen-folders");
+const first = path.join(temporary, "first folder");
+const second = path.join(temporary, "second folder");
+const hash = (folder) => createHash("sha256").update(folder).digest("hex");
+const run = (file, input) => execFileSync(process.execPath, [file], { input, encoding: "utf8", env });
+const start = (cwd, source = "startup") => JSON.parse(run(script, JSON.stringify({
+  session_id: "abc", cwd, hook_event_name: "SessionStart", source,
+}))).hookSpecificOutput;
+const lookup = (cwd, tool_response, tool_name = whoami) => run(rememberScript, JSON.stringify({
+  cwd, tool_response, tool_name, hook_event_name: "PostToolUse",
+}));
+
+try {
+  const started = start(first);
+  assert.equal(started.hookEventName, "SessionStart");
+  assert.ok(started.additionalContext.endsWith(context), "the lessons text is unchanged");
+  assert.match(started.additionalContext, /if the Nosphera plugin connection already offers whoami, call it once/);
+  assert.match(started.additionalContext, /If it is unavailable or the call fails, say nothing/);
+  assert.match(started.additionalContext, /Run \/nosphera:connect to see or change it/);
+  assert.match(started.additionalContext, /say "tool" instead of "agent"/);
+  assert.equal(fs.readFileSync(store, "utf8"), "", "an unavailable tool leaves no folder fingerprint");
+  assert.equal(lookup(first, { isError: true, content: [{ type: "text", text: "E_AUTH" }] }), "");
+  assert.equal(lookup(first, "E_AUTH"), "");
+  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }, "mcp__other__whoami"), "");
+  assert.equal(fs.readFileSync(store, "utf8"), "", "failed or unrelated lookups leave no fingerprint");
+  assert.match(start(first).additionalContext, /folder sign-in check/, "a signed-out start can retry after sign-in");
+
+  assert.equal(lookup(first, [{ type: "text", text: JSON.stringify({ id: "agent", did: "did:web:test", display_name: "Agent" }) }]), "");
+  assert.equal(start(first, "resume").additionalContext, context);
+  assert.equal(start(first).additionalContext, context);
+  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }), "");
+  assert.equal(fs.readFileSync(store, "utf8"), hash(first) + "\n");
+  assert.match(start(second).additionalContext, /folder sign-in check/);
+  assert.equal(lookup(second, { structuredContent: { id: "tool", connection_type: "tool", name: "Tool" } }), "");
+  assert.equal(start(second, "clear").additionalContext, context);
+  assert.equal(fs.readFileSync(store, "utf8"), hash(first) + "\n" + hash(second) + "\n");
+  assert.ok(!fs.existsSync(first) && !fs.existsSync(second), "neither project folder is written");
+
+  fs.unlinkSync(store);
+  fs.mkdirSync(store);
+  assert.equal(start(first).additionalContext, context, "an unreadable store keeps the lessons check");
+  assert.equal(lookup(first, { id: "agent", did: "did:web:test" }), "");
+  assert.ok(fs.statSync(store).isDirectory());
+  assert.equal(run(script, JSON.stringify({ hook_event_name: "SessionStart", source: "compact", cwd: first })), "");
+  assert.equal(run(script, "not json"), "", "garbage input never breaks the session");
+  assert.equal(run(script, ""), "", "empty input is silent");
+  assert.equal(run(rememberScript, "not json"), "", "the identity handler always stays silent");
+} finally {
+  fs.rmSync(temporary, { recursive: true, force: true });
+}
 
 console.log("session-lessons.test.js passed");
