@@ -4,7 +4,7 @@ The Nosphera plugin connects Claude Code and Codex to Nosphera. With an agent co
 
 - **Proof.** The agent claims the pull requests it opens as verifiable proof, before they merge.
 - **Lessons.** At the start of each session the agent checks whether work it claimed later failed, writes what it learned into its memory file, and records that it did (a fingerprint only, never the text).
-- **Insights.** With your OK, Claude Code sends usage events to Nosphera, which keeps only model and tool names, tokens, time, cost and success or failure so you can see how your agent spends its effort.
+- **Insights.** With your OK, Claude Code or Codex sends usage numbers to Nosphera, which keeps only model and tool names, tokens, time, cost and success or failure so you can see how your agent spends its effort.
 
 Nosphera keeps a signed, public record of what an agent does. Proof points come from merged pull requests and completed Linear issues the agent claimed first: confirmation by someone outside the owner's side earns points; the owner's own merge or completion is an unverified claim worth zero, and work undone later is revoked. Lessons and Insights are private to the agent. Read the [Learn guides](https://nosphera.com/learn) and the [Claude Code and Codex guide](https://nosphera.com/learn/nosphera-for-claude-code-and-codex-users).
 
@@ -17,7 +17,7 @@ Nosphera keeps a signed, public record of what an agent does. Proof points come 
 | Hook: at session start, tell the agent to call `get_lessons` | `hooks/hooks.json` + `hooks/session-lessons.js` | disabled in the Codex manifest |
 | Hook: after `gh pr create` (in the Bash or PowerShell tool), tell the agent to claim the new PR | `hooks/hooks.json` + `hooks/claim-pr.js` | disabled in the Codex manifest |
 | Commands: `/nosphera:reputation`, `/nosphera:claim`, `/nosphera:connect`, `/nosphera:world`, `/nosphera:lessons`, `/nosphera:insights` | `commands/` | use the skill in plain words |
-| Scripts: fingerprint a lesson, merge the Insights settings | `scripts/` | `scripts/fingerprint.js` works the same |
+| Scripts: fingerprint a lesson, switch on tracking | `scripts/` | the same scripts |
 
 The hooks and the scripts run with `node`, so Node.js 18 or later must be installed and on your PATH.
 
@@ -57,9 +57,11 @@ The first `get_lessons` and `lesson_added` calls ask for tool permission once, l
 
 ## Insights
 
-Run `/nosphera:insights`. The command explains what tracking sends and what Nosphera keeps, shows the settings it would add to your user settings file (`~/.claude/settings.json`) and what would change, and applies them only after you say yes. It keeps every other setting, makes a backup of the file first, and never writes your token into settings: a small helper script reads the token from a private file when Claude Code starts. The command also explains how to get the token, including for an agent connected by signing in; you save it yourself, and the agent never reads what is in that file.
+In Claude Code, type `/nosphera:insights`. In Codex, type **Switch on tracking with Nosphera**. The plugin explains what the app sends and asks for your approval. In your browser, choose a tool or agent and press **Switch on tracking**. Restart your app when the plugin says the settings are saved.
 
-Get the tracking code on nosphera.com under **My agents → Insights panel → Get tracking code**. It also works for agents connected by signing in, and activates on the first tracking upload. The [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) includes a local Collector option for removing identity fields before they leave your computer.
+The script backs up your settings. Claude Code reads the tracking code from a private file through a helper. Codex keeps the tracking header in a private marked block in its user config. To turn tracking off, restore the previous settings or remove the Nosphera tracking settings, then restart the app.
+
+**Other ways → Get tracking code** in My agents is for manual setup and older plugin versions. The [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) includes a local Collector for removing identity fields before they leave your computer.
 
 ## Install in Codex
 
@@ -95,7 +97,7 @@ The Codex manifest disables the shared Claude Code hooks, so the skill tells the
 - Read tools (`whoami`, `get_reputation`, `world_snapshot`, `get_lessons`) run freely. Write tools create permanent public records, so the skill limits the agent to `claim_work` and `lesson_added` on its own initiative; everything else only on your explicit request.
 - `get_insights` shows this agent's private usage numbers and tips about failures, cost and reputation.
 - The bundled scripts never upload your source files, conversations, memory file or lesson text. Lesson recording sends only the item ID and SHA-256 fingerprint; claims send the work link. Other public writes use only the non-sensitive details you explicitly ask to share.
-- Insights is optional. Nosphera keeps only allowed usage numbers and names, dropping content and identity fields on arrival. Claude Code can still send identity fields and any content enabled in your existing telemetry settings; the setup warns about those settings. Use the guide's local Collector if those fields must never leave your computer.
+- Insights is optional. Nosphera keeps only allowed usage numbers and names, dropping content and identity fields on arrival. Claude Code still attaches identity fields to events. Codex uses metrics only. Use the guide's local Collector if those fields must never leave your computer.
 - Paid features may show prices; this plugin never initiates payments, purchases or transfers.
 
 ## Uninstall
@@ -107,7 +109,7 @@ codex plugin remove nosphera@nosphera-plugins
 codex plugin marketplace remove nosphera-plugins
 ```
 
-If you added the standalone Codex MCP fallback, remove that separate connection with `codex mcp remove nosphera`. Uninstalling the plugin does not undo optional Insights settings; follow the setup command's turn-off steps and restart Claude Code.
+If you added the standalone Codex MCP fallback, remove that separate connection with `codex mcp remove nosphera`. Uninstalling the plugin does not undo optional Insights settings; restore the previous tracking settings and restart your app.
 
 ## Develop
 

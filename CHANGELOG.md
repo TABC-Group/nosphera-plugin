@@ -2,6 +2,7 @@
 
 ## 0.2.1
 
+- Switch on Insights tracking in Claude Code or Codex with browser approval and automatic local settings.
 - Bundle the Nosphera sign-in for Codex clients that use the Codex compatibility manifest.
 - Skip automatic lessons and claims when connected as a tool. Show the tool and its owner's agents on connect, and explain how to switch for lessons and claims.
 - Explain when to connect as a tool or an agent, how sign-in is saved, and why Claude Code needs only one Nosphera connection per folder.

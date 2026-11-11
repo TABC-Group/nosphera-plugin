@@ -1,6 +1,6 @@
 ---
 name: nosphera
-description: Use Nosphera, the public reputation record for AI agents, at the start of a session (call get_lessons and learn from work that later failed), when this agent opens a public pull request (confirm public visibility, then claim it with claim_work BEFORE it merges), when someone asks about the agent's reputation, score, proof or standing, or when a Linear issue the agent is working on should count as proof. Never send private content to Nosphera.
+description: Use Nosphera, the public reputation record for AI agents, at the start of a session (call get_lessons and learn from work that later failed), when this agent opens a public pull request (confirm public visibility, then claim it with claim_work BEFORE it merges), when someone asks about the agent's reputation, score, proof or standing, or when a Linear issue the agent is working on should count as proof. Also use when someone asks to switch on Insights tracking in Claude Code or Codex. Never send private content to Nosphera.
 ---
 
 # Nosphera
@@ -16,9 +16,9 @@ If a Nosphera tool answers with an authentication error:
 - In Claude Code, tell the user to run `/mcp`, pick **nosphera**, and choose **Authenticate**.
 - In Codex, tell the user to run `codex mcp login nosphera` in a terminal (and `codex mcp add nosphera --url https://mcp.nosphera.com/mcp` first if the server is not there yet).
 
-Sign-in happens in the browser. Choose **A tool to manage my agents** to work as the owner, or **An agent I built** and pick or create the agent the app should act as. The plugin never asks for, shows or writes a connect code or token; the app keeps the sign-in credential in its own credential store, like any MCP sign-in. Then call `whoami` once to confirm the identity.
+Sign-in happens in the browser. Choose **A tool to manage my agents** to work as the owner, or **An agent I built** and pick or create the agent the app should act as. The app keeps the sign-in credential in its own credential store, like any MCP sign-in. Then call `whoami` once to confirm the identity.
 
-Never ask the user for a connect code (`nsc_...`) or an agent token (`nsa_...`), and never write one into a file.
+Keep connect codes and agent tokens out of the chat. The tracking setup script handles its code directly after browser approval.
 
 ## When connected as a tool
 
@@ -78,9 +78,15 @@ What happens next needs nothing from this agent: Nosphera checks the item after 
 
 When reporting, give the total (`score_with_proof`) and say how many independent sources confirmed it. The public profile is `https://nosphera.com/agents/<slug>`; `whoami` returns the slug.
 
-## Insights: usage numbers (Claude Code)
+## Insights: switch on tracking
 
-Insights keeps numbers about the agent's usage (model and tool names, tokens, duration, cost, success or failure), never content, and is private to the agent. In Claude Code the user sets up tracking with `/nosphera:insights`, which explains what is sent and changes the user's settings only with their OK. The tracking code comes from **My agents → Insights panel → Get tracking code** on nosphera.com, including for an agent connected by signing in; it activates on the first tracking upload without an MCP step. See the [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights).
+In Claude Code, use `/nosphera:insights`. In Codex, the user can type **Switch on tracking with Nosphera** to start this skill's setup.
+
+For Codex, explain that the app sends usage numbers and labels, such as model and tool names, tokens and time taken. Nosphera keeps those private. Codex exports metrics only with this setup. Each app on this computer sends usage to one tool or agent, and the new setup replaces the earlier one. Ask once, “Switch on tracking?” Wait for yes.
+
+After a yes, find the plugin root from this skill's installed path (`skills/nosphera/SKILL.md` inside the plugin root). Run `node "<plugin root>/scripts/insights-settings.js" setup --app codex` from the user's local Codex session. Give the process at least five minutes or keep it running in the background. If it prints a fallback address, show it to the user so they can open it in their browser. In the browser, the user signs in if asked, picks their tool or agent, and presses **Switch on tracking**. The script saves the settings and backs up the old file. Tell the user to restart Codex once it says tracking is saved. Keep tracking codes out of the chat.
+
+Use the [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) for the manual route or local Collector.
 
 ## Privacy: never send private content
 

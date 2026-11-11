@@ -251,4 +251,81 @@ try {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-console.log("insights-settings.test.js passed");
+async function testBrowserSetup() {
+  const { constants, createPublicKey, publicEncrypt, randomBytes } = require("node:crypto");
+  const { switchOnTracking, codexConfig } = require("./insights-settings");
+  const isolated = fs.mkdtempSync(path.join(tmpdir(), "nosphera-browser-setup-"));
+  const credential = "nsu_" + "a".repeat(64); // TEST ONLY
+  const codex = path.join(isolated, "config.toml");
+  const claude = path.join(isolated, "settings.json");
+  const unrelated = 'model = "test"\r\nexamples = [\r\n  ["otel"]\r\n]\r\n[profiles.work]\r\ninstructions = """\r\n[otel]\r\n# BEGIN Nosphera Insights tracking\r\n"""\r\n';
+  const oldOtel = '\r\n[otel]\r\nexporter = "none"\r\n[otel.metrics_exporter.otlp-http]\r\nendpoint = "https://old.example.test"\r\n';
+  const original = unrelated + oldOtel;
+  const oldClaude = '{"theme":"dark","env":{"OTEL_LOG_TOOL_CONTENT":"1","MY_SETTING":"kept"}}';
+  fs.writeFileSync(codex, original);
+  fs.writeFileSync(claude, oldClaude);
+  const results = [];
+  try {
+    for (const [app, settings] of [["codex", codex], ["claude_code", claude]]) {
+      let opened;
+      const browser = new Promise((resolve) => { opened = resolve; });
+      const finished = switchOnTracking({ app, settings, home: isolated }, {
+        openBrowser: opened, write: (line) => results.push(line), timeout: 5000,
+      });
+      const page = new URL(await browser);
+      assert.equal(page.origin, "https://nosphera.com");
+      assert.equal(page.pathname, "/my-agents/tracking");
+      const { port, state, key, expires } = Object.fromEntries(page.searchParams);
+      const callback = new URL("http://127.0.0.1:" + port + "/finish");
+      const seal = publicEncrypt({
+        key: createPublicKey({ key: { kty: "RSA", n: key, e: "AQAB" }, format: "jwk" }),
+        padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256",
+        oaepLabel: Buffer.from([state, app, port, expires].join(":")),
+      }, Buffer.from(credential)).toString("base64url");
+      callback.search = new URLSearchParams({ state: randomBytes(32).toString("base64url"), sealed: seal });
+      assert.equal((await fetch(callback)).status, 404);
+      callback.search = new URLSearchParams({ state, sealed: randomBytes(256).toString("base64url") });
+      assert.equal((await fetch(callback)).status, 404);
+      assert.equal(fs.readFileSync(settings, "utf8"), app === "codex" ? original : oldClaude);
+      callback.searchParams.set("sealed", seal);
+      const response = await fetch(callback);
+      assert.equal(response.status, 200);
+      assert.ok(!(await response.text()).includes(credential));
+      const done = await finished;
+      assert.equal(done.code, 0);
+      assert.ok(!JSON.stringify(done).includes(credential));
+      assert.equal(fs.readFileSync(settings + ".before-nosphera-insights", "utf8"), app === "codex" ? original : oldClaude);
+      await assert.rejects(fetch(callback));
+    }
+    const next = fs.readFileSync(codex, "utf8");
+    assert.ok(next.startsWith(unrelated));
+    assert.equal(next.split("[otel]").length, 3, "one real table plus one in the instruction string");
+    assert.ok(next.includes("Bearer " + credential));
+    assert.ok(!next.includes("https://old.example.test"));
+    assert.equal(codexConfig(next, ENV.OTEL_EXPORTER_OTLP_ENDPOINT, credential), next);
+    const claudeSettings = JSON.parse(fs.readFileSync(claude, "utf8"));
+    assert.equal(claudeSettings.theme, "dark");
+    assert.equal(claudeSettings.env.MY_SETTING, "kept");
+    assert.equal(claudeSettings.env.OTEL_LOG_TOOL_CONTENT, "0");
+    assert.ok(!JSON.stringify(claudeSettings).includes(credential));
+    const token = path.join(locations({ home: isolated }).helperDir, "tracking-token");
+    assert.ok(fs.readFileSync(token, "utf8").trim() === credential);
+    if (process.platform !== "win32") assert.equal(fs.statSync(token).mode & 0o777, 0o600);
+    assert.ok(!results.join("").includes(credential));
+    const unused = path.join(isolated, "unused.toml");
+    const timedOut = await switchOnTracking({ app: "codex", settings: unused, home: isolated }, {
+      openBrowser: () => {}, write: () => {}, timeout: 25,
+    });
+    assert.match(timedOut.stderr, /link expired/);
+    assert.ok(!fs.existsSync(unused));
+  } finally {
+    fs.rmSync(isolated, { recursive: true, force: true });
+  }
+}
+
+testBrowserSetup().then(() => {
+  console.log("insights-settings.test.js passed");
+}).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

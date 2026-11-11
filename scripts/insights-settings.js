@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Nosphera Insights settings for Claude Code.
+ * Nosphera Insights settings for Claude Code and Codex.
  *
- * Shows the settings that make Claude Code send its usage numbers to Nosphera
- * Insights, compares them with the user's own settings file, and, only when
- * asked to, merges them in. It never removes or rewrites a setting it does not
- * own, never reads what is in the token file, and never sends anything
- * anywhere.
+ * Automatic setup waits for browser approval, then saves the settings and
+ * the tracking credential without displaying it. The older manual commands
+ * remain available for existing installs.
  *
+ *   node insights-settings.js setup --app claude_code|codex
  *   node insights-settings.js show     the settings block for this computer
  *   node insights-settings.js plan     what applying would change, and what is still missing
  *   node insights-settings.js apply    merge the block into the user settings file
@@ -21,6 +20,9 @@
 "use strict";
 
 const fs = require("node:fs");
+const { execFileSync, spawn } = require("node:child_process");
+const { constants, generateKeyPairSync, privateDecrypt, randomBytes, timingSafeEqual } = require("node:crypto");
+const { createServer } = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -340,8 +342,284 @@ function commandToken(loc) {
   };
 }
 
+const TRACKING_APPS = { claude_code: "Claude Code", codex: "Codex" };
+const TRACKING_TIMEOUT = 5 * 60_000;
+const OTEL_BEGIN = "# BEGIN Nosphera Insights tracking";
+const OTEL_END = "# END Nosphera Insights tracking";
+const CONFIG_ERROR = "Could not update your tracking settings. Check that your settings file is writable, then start again.";
+
+function trackingAddresses() {
+  const site = new URL(process.env.NOSPHERA_TRACKING_SITE || "https://nosphera.com");
+  const local = site.protocol === "http:" && site.hostname === "127.0.0.1" && site.port;
+  const publicSites = {
+    "https://nosphera.com": ENV.OTEL_EXPORTER_OTLP_ENDPOINT,
+    "https://dev.nosphera.com": "https://dev-mcp.nosphera.com/otlp",
+  };
+  if (site.username || site.password || site.pathname !== "/" || site.search || site.hash) {
+    throw new Error("Use a Nosphera site address for tracking.");
+  }
+  if (Object.hasOwn(publicSites, site.origin)) return { site, endpoint: publicSites[site.origin] };
+  if (local && /^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}\/otlp$/.test(process.env.NOSPHERA_TRACKING_OTLP_URL || "")) {
+    const endpoint = new URL(process.env.NOSPHERA_TRACKING_OTLP_URL);
+    return { site, endpoint: endpoint.href };
+  }
+  throw new Error("Use a Nosphera site address for tracking.");
+}
+
+function codexConfig(existing, endpoint, credential) {
+  const bom = existing.startsWith("\uFEFF") ? "\uFEFF" : "";
+  if (bom) existing = existing.slice(1);
+  const newline = existing.includes("\r\n") ? "\r\n" : "\n";
+  // Mask multiline strings and comments before recognizing headers. An apparent
+  // [otel] inside an instruction string is content and must be left alone.
+  const masked = existing.replace(/"""(?:\\[\s\S]|[^"\\]|"(?!""))*"""{0,2}|'''[\s\S]*?'''{0,2}|"(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*'|#[^\r\n]*/g,
+    (value) => value.startsWith('"""') || value.startsWith("'''") || value.startsWith("#")
+      ? value.replace(/[^\r\n]/g, value.startsWith("#") ? " " : "~") : value);
+  const candidates = new Map([...masked.matchAll(/^[\t ]*(\[\[?)[\t ]*([^\r\n]+?)\]\]?[\t ]*\r?$/gm)]
+    .map((header) => [header.index, header]));
+  const headers = [];
+  let depth = 0;
+  for (const line of masked.matchAll(/[^\n]*(?:\n|$)/g)) {
+    if (depth === 0 && candidates.has(line.index)) headers.push(candidates.get(line.index));
+    // An array value such as ["otel"] can look like a table on its own line.
+    for (const token of line[0].match(/"(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*'|[\[\]{}]/g) ?? []) {
+      if (token === "[" || token === "{") depth += 1;
+      if (token === "]" || token === "}") depth -= 1;
+    }
+  }
+  const root = masked.slice(0, headers[0]?.index ?? masked.length);
+  if (/^[\t ]*(?:otel|"otel"|'otel')[\t ]*[.=]/m.test(root)) {
+    throw new Error("Codex already has inline telemetry settings. Use Other ways in Nosphera to set up tracking.");
+  }
+  const isOtel = (header) => /^(?:otel|"otel"|'otel')(?:[\t ]*\.|[\t ]*$)/.test(header[2]);
+  const ranges = [];
+  const marked = [...existing.matchAll(/^# (BEGIN|END) Nosphera Insights tracking\r?$/gm)]
+    .filter((marker) => !masked.slice(marker.index, marker.index + marker[0].length).trim());
+  if (marked.length) {
+    const [begin, end] = marked;
+    if (marked.length !== 2 || begin[1] !== "BEGIN" || end[1] !== "END"
+      || headers.some((header) => header.index > begin.index && header.index < end.index && !isOtel(header))) {
+      throw new Error("Codex already has a tracking block that cannot be updated safely. Use Other ways in Nosphera.");
+    }
+    ranges.push([begin.index, Math.min(end.index + end[0].length + 1, existing.length)]);
+  }
+  for (const [index, header] of headers.entries()) {
+    if (!isOtel(header) || ranges.some(([start, end]) => header.index > start && header.index < end)) continue;
+    const end = headers[index + 1]?.index ?? existing.length;
+    // Keep blank lines and comments that precede the next table.
+    const lastValue = masked.slice(header.index, end).trimEnd().length + header.index;
+    const nextLine = existing.indexOf("\n", lastValue);
+    ranges.push([header.index, nextLine === -1 ? existing.length : nextLine + 1]);
+  }
+  let base = existing;
+  for (const [start, end] of ranges.sort((a, b) => b[0] - a[0])) {
+    base = base.slice(0, start) + base.slice(end);
+  }
+  const block = [
+    OTEL_BEGIN, "[otel]", 'exporter = "none"', 'trace_exporter = "none"', "log_user_prompt = false", "",
+    "[otel.metrics_exporter.otlp-http]", "endpoint = " + JSON.stringify(endpoint + "/v1/metrics"),
+    'protocol = "binary"', "",
+    "[otel.metrics_exporter.otlp-http.headers]", 'Authorization = "Bearer ' + credential + '"',
+    OTEL_END, "",
+  ].join(newline);
+  return bom + base + (base && !base.endsWith("\n") ? newline : "") + block;
+}
+
+function readIfPresent(file) {
+  try {
+    return fs.readFileSync(file);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return null;
+  }
+}
+
+function privateWrite(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const temporary = path.join(path.dirname(file), ".nosphera-" + randomBytes(12).toString("hex"));
+  try {
+    fs.writeFileSync(temporary, "", { flag: "wx", mode: 0o600 });
+    if (process.platform === "win32") {
+      // Apply the private ACL before writing the credential, even in a shared folder.
+      const sid = execFileSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true })
+        .match(/\bS-1-(?:\d+-)*\d+\b/)?.[0];
+      if (!sid) throw new Error(CONFIG_ERROR);
+      execFileSync("icacls.exe", [temporary, "/inheritance:r", "/grant:r", "*" + sid + ":F"], { stdio: "ignore", windowsHide: true });
+    }
+    fs.writeFileSync(temporary, content);
+    fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+function automaticSettings(args, app, endpoint) {
+  const home = args.home || os.homedir();
+  if (app === "codex") {
+    const file = args.settings || path.join(args.home ? path.join(home, ".codex") : process.env.CODEX_HOME || path.join(home, ".codex"), "config.toml");
+    const original = readIfPresent(file);
+    codexConfig(original?.toString("utf8") || "", endpoint, "");
+    return (credential) => {
+      const backup = backupSettings(file, original);
+      privateWrite(file, codexConfig(original?.toString("utf8") || "", endpoint, credential));
+      return backup;
+    };
+  }
+  const file = args.settings || path.join(args.home ? path.join(home, ".claude") : process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "settings.json");
+  const loc = locations({ home, settings: file, platform: args.platform === "posix" ? "linux" : args.platform || process.platform });
+  const helper = path.join(loc.helperDir, loc.windows ? "tracking-headers.ps1" : "tracking-headers.sh");
+  const token = path.join(loc.helperDir, "tracking-token");
+  const helperText = loc.windows
+    ? HELPER_PS1.replace('"$env:USERPROFILE\\.nosphera\\token"', '(Join-Path $PSScriptRoot "tracking-token")').replace("Get-Content -Raw $path", "Get-Content -Raw -LiteralPath $path")
+    : HELPER_SH.replace('"$HOME/.config/nosphera/token"', '"$(dirname -- "$0")/tracking-token"');
+  const block = {
+    env: { ...ENV, OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: endpoint + "/v1/logs" },
+    otelHeadersHelper: loc.windows
+      ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + slashes(helper) + '"'
+      : "'" + helper.replace(/'/g, "'\\''") + "'",
+  };
+  for (const key of CONTENT_SWITCHES) block.env[key] = "0";
+  const original = readIfPresent(file);
+  const { existing } = readSettings(file);
+  const settings = JSON.stringify(plan(existing, block).merged, null, 2) + "\n";
+  return (credential) => {
+    const backup = backupSettings(file, original);
+    const oldToken = readIfPresent(token);
+    privateWrite(helper, helperText);
+    if (!loc.windows) fs.chmodSync(helper, 0o700);
+    privateWrite(token, credential + "\n");
+    try {
+      privateWrite(file, settings);
+    } catch (error) {
+      if (oldToken) privateWrite(token, oldToken);
+      else fs.unlinkSync(token);
+      throw error;
+    }
+    return backup;
+  };
+}
+
+function backupSettings(file, original) {
+  const current = readIfPresent(file);
+  if (original ? !current?.equals(original) : current) {
+    throw new Error("Your settings changed during setup. Start again from your app.");
+  }
+  if (!original) return null;
+  const backup = backupPath(file);
+  privateWrite(backup, original);
+  return backup;
+}
+
+function openTrackingBrowser(url, write) {
+  const [program, ...args] = process.platform === "win32"
+    ? ["rundll32.exe", "url.dll,FileProtocolHandler", url]
+    : [process.platform === "darwin" ? "open" : "xdg-open", url];
+  let fallbackShown = false;
+  const fallback = () => {
+    if (fallbackShown) return;
+    fallbackShown = true;
+    write("Open this address in your browser to finish setup:\n" + url);
+  };
+  const child = spawn(program, args, { stdio: "ignore", windowsHide: true });
+  child.once("error", fallback);
+  child.once("exit", (code) => { if (code !== 0) fallback(); });
+  child.unref();
+}
+
+async function switchOnTracking(args, {
+  write = (line) => process.stdout.write(line + "\n"),
+  openBrowser = openTrackingBrowser,
+  timeout = TRACKING_TIMEOUT,
+} = {}) {
+  const app = args.app;
+  const label = TRACKING_APPS[app];
+  if (!Object.hasOwn(TRACKING_APPS, app)) throw new Error("Choose Claude Code or Codex.");
+  const { site, endpoint } = trackingAddresses();
+  const install = automaticSettings(args, app, endpoint);
+  const state = randomBytes(32).toString("base64url");
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  let port;
+  let expires;
+  let timer;
+  let completed = false;
+
+  return new Promise((resolve) => {
+    const finish = (result) => {
+      clearTimeout(timer);
+      server.close();
+      server.closeAllConnections();
+      resolve(result);
+    };
+    const server = createServer({ maxHeaderSize: 4096 }, (request, response) => {
+      const host = "127.0.0.1:" + port;
+      let url;
+      try {
+        url = new URL(request.url || "/", "http://" + host);
+      } catch {
+        response.writeHead(404, { Connection: "close" }).end();
+        return;
+      }
+      const supplied = url.searchParams.get("state") || "";
+      const sealed = url.searchParams.get("sealed") || "";
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Referrer-Policy", "no-referrer");
+      response.setHeader("Connection", "close");
+      if (completed || Date.now() >= expires || request.method !== "GET" || request.headers.host !== host
+        || url.origin !== "http://" + host || url.pathname !== "/finish"
+        || !/^[a-zA-Z0-9_-]{43}$/.test(supplied) || !timingSafeEqual(Buffer.from(state), Buffer.from(supplied))
+        || !/^[a-zA-Z0-9_-]{342}$/.test(sealed)) {
+        response.writeHead(404).end();
+        return;
+      }
+      let credential;
+      try {
+        credential = privateDecrypt({
+          key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256",
+          oaepLabel: Buffer.from([state, app, port, expires].join(":")),
+        }, Buffer.from(sealed, "base64url")).toString("utf8");
+      } catch {
+        response.writeHead(404).end();
+        return;
+      }
+      if (!/^(?:nsc_[a-f0-9]{32}|nsu_[a-f0-9]{64})$/.test(credential)) {
+        response.writeHead(404).end();
+        return;
+      }
+      completed = true;
+      let message;
+      let result;
+      try {
+        const backup = install(credential);
+        message = "Tracking settings saved. Restart " + label + " to start sending usage numbers.";
+        result = { code: 0, stdout: backup ? message + "\nPrevious settings saved to " + backup : message };
+      } catch {
+        message = CONFIG_ERROR;
+        result = { code: 1, stderr: message };
+      }
+      response.writeHead(result.code === 0 ? 200 : 500, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nosphera tracking</title><script>history.replaceState(null, "", "/done")</script><h1>' + message + "</h1></html>", () => finish(result));
+    });
+    server.once("error", () => finish({ code: 1, stderr: "Could not start tracking setup on this computer. Try again from your app." }));
+    server.listen(0, "127.0.0.1", () => {
+      port = server.address().port;
+      expires = Date.now() + timeout;
+      const url = new URL("/my-agents/tracking", site);
+      url.search = new URLSearchParams({
+        app, port: String(port), state, key: publicKey.export({ format: "jwk" }).n, expires: String(expires),
+      }).toString();
+      timer = setTimeout(() => finish({ code: 1, stderr: "The tracking setup link expired. Start again from your app." }), timeout);
+      write("Finish switching on tracking in your browser.");
+      openBrowser(url.href, write);
+    });
+  });
+}
+
 function parseArgs(argv) {
-  const args = { command: null, settings: null, home: null, platform: null };
+  const args = { command: null, settings: null, home: null, platform: null, app: null };
   const takeValue = (name, index) => {
     const value = argv[index];
     if (value === undefined || value === "" || value.startsWith("-")) return { error: `${name} needs a value.` };
@@ -349,7 +627,7 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--settings" || arg === "--home" || arg === "--platform") {
+    if (arg === "--settings" || arg === "--home" || arg === "--platform" || arg === "--app") {
       const taken = takeValue(arg, i + 1);
       if (taken.error) return taken;
       args[arg.slice(2)] = taken.value;
@@ -366,6 +644,7 @@ function parseArgs(argv) {
 
 const USAGE = [
   "Usage: node insights-settings.js <show|plan|apply|helper|token> [--settings <file>] [--home <dir>] [--platform win32|posix]",
+  "  setup --app claude_code|codex   switch on tracking after browser approval",
   "  show     the settings block for this computer",
   "  plan     what applying would change, and what is still missing",
   "  apply    merge the block into the user settings file (only after the user said yes)",
@@ -392,10 +671,19 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  const result = main(process.argv.slice(2));
-  if (result.stdout) process.stdout.write(`${result.stdout}\n`);
-  if (result.stderr) process.stderr.write(`${result.stderr}\n`);
-  process.exit(result.code);
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
+  const result = args.command === "setup"
+    ? switchOnTracking(args).catch((error) => ({
+      code: 1,
+      stderr: /^(Use a Nosphera site|Choose Claude Code|Codex already has)/.test(error.message) ? error.message : CONFIG_ERROR,
+    }))
+    : main(argv);
+  Promise.resolve(result).then(({ code, stdout, stderr }) => {
+    if (stdout) process.stdout.write(stdout + "\n");
+    if (stderr) process.stderr.write(stderr + "\n");
+    process.exitCode = code;
+  });
 }
 
-module.exports = { ENV, CONTENT_SWITCHES, locations, settingsBlock, plan, readSettings, shown, backupPath, main };
+module.exports = { ENV, CONTENT_SWITCHES, locations, settingsBlock, plan, readSettings, shown, backupPath, main, codexConfig, switchOnTracking };
