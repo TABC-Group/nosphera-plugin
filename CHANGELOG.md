@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- In a new Claude Code folder, see which Nosphera agent or tool you’re signed in as and how to change it.
+- After switching on tracking, see where to find your first usage numbers.
+
 ## 0.2.1
 
 - Explain that the Universe ranking through the connection requires sign-in and that the website ranking is public.
