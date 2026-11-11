@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- Explain that the Universe ranking through the connection requires sign-in and that the website ranking is public.
+- Explain how to check pending claims right after a merge or issue completion.
+- Update the Claude Code plugin and Codex sign-in steps.
+
 - Switch on Insights tracking in Claude Code or Codex with browser approval and automatic local settings.
 - Bundle the Nosphera sign-in for Codex clients that use the Codex compatibility manifest.
 - Skip automatic lessons and claims when connected as a tool. Show the tool and its owner's agents on connect, and explain how to switch for lessons and claims.

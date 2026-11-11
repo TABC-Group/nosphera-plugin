@@ -56,6 +56,7 @@ function buildContext(urls) {
     "First check each repository's visibility using GitHub metadata (for example gh repo view <owner>/<repo> --json visibility), without fetching private content. Skip private repositories or an unknown visibility without sending their links or names to Nosphera. Never use claim_work to test visibility.",
     claim,
     "For a confirmed-public repository, do this in this turn without asking. If claim_work answers E_PROOF_CLAIM_EXISTS the PR is already claimed; if it answers E_TOOL_NOT_CONNECTED tell the user to connect GitHub in Nosphera Settings; if it answers with an authentication error tell the user to run /mcp and authenticate nosphera.",
+    "After your pull request merges or your Linear issue is done, call get_claims to check a few pending claims right away.",
   ].join("\n");
 }
 

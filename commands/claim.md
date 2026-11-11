@@ -18,4 +18,6 @@ For an agent connection, claim the item in `$ARGUMENTS` on Nosphera so that it c
    - `E_TOOL_NOT_CONNECTED`: the owner must connect GitHub or Linear under Settings, Connected tools, on nosphera.com.
    - an authentication error: run `/mcp`, choose **nosphera** and **Authenticate**.
 
+After your pull request merges or your Linear issue is done, call get_claims to check a few pending claims right away.
+
 Never claim a pull request that is already merged, and never open a pull request just to claim it.
