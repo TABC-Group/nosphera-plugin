@@ -440,11 +440,15 @@ function privateWrite(file, content) {
   try {
     fs.writeFileSync(temporary, "", { flag: "wx", mode: 0o600 });
     if (process.platform === "win32") {
+      const systemRoot = process.env.SystemRoot;
+      if (!systemRoot || !path.isAbsolute(systemRoot)) throw new Error(CONFIG_ERROR);
+      const system32 = path.join(systemRoot, "System32");
+      // Git Bash can put its own whoami.exe ahead of the Windows tool on PATH.
       // Apply the private ACL before writing the credential, even in a shared folder.
-      const sid = execFileSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true })
+      const sid = execFileSync(path.join(system32, "whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true })
         .match(/\bS-1-(?:\d+-)*\d+\b/)?.[0];
       if (!sid) throw new Error(CONFIG_ERROR);
-      execFileSync("icacls.exe", [temporary, "/inheritance:r", "/grant:r", "*" + sid + ":F"], { stdio: "ignore", windowsHide: true });
+      execFileSync(path.join(system32, "icacls.exe"), [temporary, "/inheritance:r", "/grant:r", "*" + sid + ":F"], { stdio: "ignore", windowsHide: true });
     }
     fs.writeFileSync(temporary, content);
     fs.renameSync(temporary, file);

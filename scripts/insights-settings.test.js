@@ -265,7 +265,21 @@ async function testBrowserSetup() {
   fs.writeFileSync(codex, original);
   fs.writeFileSync(claude, oldClaude);
   const results = [];
+  const originalPath = process.env.PATH;
   try {
+    if (process.platform === "win32") {
+      // Stand-ins that reject the Windows arguments used by tracking setup.
+      const shadow = path.join(isolated, "shadow-bin");
+      fs.mkdirSync(shadow);
+      const standIn = path.join(process.env.SystemRoot, "System32", "where.exe");
+      for (const name of ["whoami.exe", "icacls.exe"]) {
+        fs.copyFileSync(standIn, path.join(shadow, name));
+      }
+      process.env.PATH = [shadow, originalPath].join(path.delimiter);
+      const lookup = spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { windowsHide: true });
+      assert.ifError(lookup.error);
+      assert.notEqual(lookup.status, 0, "a bare whoami.exe call hits the stand-in");
+    }
     for (const [app, settings] of [["codex", codex], ["claude_code", claude]]) {
       let opened;
       const browser = new Promise((resolve) => { opened = resolve; });
@@ -319,6 +333,8 @@ async function testBrowserSetup() {
     assert.match(timedOut.stderr, /link expired/);
     assert.ok(!fs.existsSync(unused));
   } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
     fs.rmSync(isolated, { recursive: true, force: true });
   }
 }
