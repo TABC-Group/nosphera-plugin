@@ -65,6 +65,13 @@ On nosphera.com, **Also send the names of the apps I use** lets Claude Code send
 
 The script backs up your settings. Claude Code reads the tracking code from a private file through a helper. Codex keeps the tracking header in a private marked block in its user config. To turn tracking off, restore the previous settings or remove the Nosphera tracking settings, then restart the app.
 
+When weekly limits are available for your Claude Code or Codex tool, run setup again with version 0.2.5 and tick **Also send how much of my weekly limit I have used**. The helper sends the percentage used, the length of the limit and its reset time. Your plan, credit balance and chats stay on this computer.
+
+- **Claude Code in a terminal.** The helper gets the limit from the status line. Your existing status line looks the same. If you do not have one, run setup in your terminal so it can ask whether to add a line showing the weekly percentage and reset time. The new line replaces keyboard hints such as **Esc to interrupt** and **? for shortcuts**. One Claude Code terminal session can report the account limit.
+- **Codex.** After a turn, the helper reads the latest weekly limit from that session. The option appears when Codex has no separate notification command configured.
+
+To stop sending the weekly limit and keep regular tracking, run setup for the same tool again with the box unticked. It restores your Claude Code status line or removes the Codex notification command added by Nosphera. If you remove all tracking manually, restore the original `statusLine` in Claude Code's `settings.json` or remove it if you had none. For Codex, remove the whole marked block from `config.toml`. Restart your app.
+
 **Other ways → Get tracking code** in My agents is for manual setup and older plugin versions. The [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) includes a local Collector for removing identity fields before they leave your computer.
 
 ## Install in Codex

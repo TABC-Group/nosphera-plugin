@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5
+
+- Claude Code and Codex tools can send how much of their weekly limit they have used and when it resets. Run tracking setup again and tick the weekly limit box when it is available.
+- Claude Code uses its terminal status line. Setup keeps your existing line or asks before adding one.
+
 ## 0.2.4
 
 - When you set up Claude Code tracking on nosphera.com, you can choose to send the names of the apps you use. Nosphera keeps only app and tool names from the call details.

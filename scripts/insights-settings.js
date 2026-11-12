@@ -25,6 +25,9 @@ const { constants, createHash, generateKeyPairSync, privateDecrypt, randomBytes,
 const { createServer } = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const readline = require("node:readline/promises");
+const { originalShell } = require("./claude-week-used.cjs");
+const { weekEndpoint } = require("./week-used-sender.cjs");
 
 // From https://nosphera.com/learn/how-to-switch-on-insights. Events only: metrics and
 // traces would repeat the same numbers and use up the daily limit.
@@ -393,7 +396,7 @@ function trackingAddresses() {
   throw new Error("Use a Nosphera site address for tracking.");
 }
 
-function codexConfig(existing, endpoint, credential) {
+function codexConfig(existing, endpoint, credential, weekCommand) {
   const bom = existing.startsWith("\uFEFF") ? "\uFEFF" : "";
   if (bom) existing = existing.slice(1);
   const newline = existing.includes("\r\n") ? "\r\n" : "\n";
@@ -438,17 +441,29 @@ function codexConfig(existing, endpoint, credential) {
     const nextLine = existing.indexOf("\n", lastValue);
     ranges.push([header.index, nextLine === -1 ? existing.length : nextLine + 1]);
   }
+  const firstTable = headers.find((header) => !ranges.some(([start, end]) => header.index >= start && header.index < end));
+  let insertion = firstTable?.index ?? existing.length;
   let base = existing;
   for (const [start, end] of ranges.sort((a, b) => b[0] - a[0])) {
     base = base.slice(0, start) + base.slice(end);
+    if (start < (firstTable?.index ?? existing.length)) insertion -= end - start;
   }
+  const ownRoot = masked.slice(0, firstTable?.index ?? masked.length);
+  const customNotify = [...ownRoot.matchAll(/^[\t ]*(?:notify|"notify"|'notify')[\t ]*=/gm)]
+    .some((entry) => !ranges.some(([start, end]) => entry.index >= start && entry.index < end));
+  if (weekCommand && customNotify) return null;
   const block = [
-    OTEL_BEGIN, "[otel]", 'exporter = "none"', 'trace_exporter = "none"', "log_user_prompt = false", "",
+    OTEL_BEGIN, ...(weekCommand ? ["notify = " + JSON.stringify(weekCommand), ""] : []),
+    "[otel]", 'exporter = "none"', 'trace_exporter = "none"', "log_user_prompt = false", "",
     "[otel.metrics_exporter.otlp-http]", "endpoint = " + JSON.stringify(endpoint + "/v1/metrics"),
     'protocol = "binary"', "",
     "[otel.metrics_exporter.otlp-http.headers]", 'Authorization = "Bearer ' + credential + '"',
     OTEL_END, "",
   ].join(newline);
+  if (weekCommand) {
+    const before = base.slice(0, insertion);
+    return bom + before + (before && !before.endsWith("\n") ? newline : "") + block + base.slice(insertion);
+  }
   return bom + base + (base && !base.endsWith("\n") ? newline : "") + block;
 }
 
@@ -484,17 +499,30 @@ function privateWrite(file, content) {
   }
 }
 
+function installWeekScripts(folder, app) {
+  for (const name of [app + "-week-used.cjs", "week-used-sender.cjs"]) {
+    privateWrite(path.join(folder, name), fs.readFileSync(path.join(__dirname, name)));
+  }
+}
+
 function automaticSettings(args, app, endpoint) {
   const home = args.home || os.homedir();
   if (app === "codex") {
     const file = args.settings || path.join(args.home ? path.join(home, ".codex") : process.env.CODEX_HOME || path.join(home, ".codex"), "config.toml");
     const original = readIfPresent(file);
-    codexConfig(original?.toString("utf8") || "", endpoint, "");
-    return (credential) => {
+    const before = original?.toString("utf8") || "";
+    const helper = path.join(path.dirname(file), "codex-week-used.cjs");
+    const command = [process.execPath, helper, file];
+    const canSendWeek = codexConfig(before, endpoint, "", command) !== null;
+    const install = (credential, _sendAppNames, sendWeekUsed) => {
+      const config = codexConfig(before, endpoint, credential, sendWeekUsed ? command : undefined);
+      if (config === null) throw new Error(CONFIG_ERROR);
       const backup = backupSettings(file, original);
-      privateWrite(file, codexConfig(original?.toString("utf8") || "", endpoint, credential));
+      if (sendWeekUsed) installWeekScripts(path.dirname(helper), "codex");
+      privateWrite(file, config);
       return backup;
     };
+    return { install, canSendWeek };
   }
   const file = args.settings || path.join(args.home ? path.join(home, ".claude") : process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "settings.json");
   const loc = locations({ home, settings: file, platform: args.platform === "posix" ? "linux" : args.platform || process.platform });
@@ -513,13 +541,37 @@ function automaticSettings(args, app, endpoint) {
   const original = readIfPresent(file);
   const { existing } = readSettings(file);
   const { merged } = plan(existing, block);
-  return (credential, sendAppNames) => {
+  const weekHelper = path.join(loc.helperDir, "claude-week-used.cjs");
+  const weekSettings = path.join(loc.helperDir, "claude-week-used-settings.json");
+  const command = `node "${slashes(weekHelper)}"`;
+  const alreadyWrapped = existing.statusLine?.command === command;
+  let prior;
+  try {
+    if (alreadyWrapped) prior = JSON.parse(fs.readFileSync(weekSettings, "utf8"));
+  } catch { /* The original user settings backup is still available. */ }
+  const originalLine = alreadyWrapped ? prior?.original : existing.statusLine;
+  const canSendWeek = (!alreadyWrapped || prior?.command === command)
+    && !/["$`]/.test(slashes(weekHelper))
+    && (originalLine == null || (originalLine.type === "command" && typeof originalLine.command === "string" && !!originalLine.command.trim()));
+  const statusLineApproval = canSendWeek && !alreadyWrapped && originalLine == null;
+  return { canSendWeek, statusLineApproval, install(credential, sendAppNames, sendWeekUsed) {
     if (sendAppNames) merged.env.OTEL_LOG_TOOL_DETAILS = "1";
+    if (sendWeekUsed) merged.statusLine = { ...originalLine, type: "command", command };
+    else if (alreadyWrapped && prior?.command === command) {
+      if (originalLine == null) delete merged.statusLine;
+      else merged.statusLine = originalLine;
+    }
     const settings = JSON.stringify(merged, null, 2) + "\n";
     const backup = backupSettings(file, original);
     const oldToken = readIfPresent(token);
     privateWrite(helper, helperText);
     if (!loc.windows) fs.chmodSync(helper, 0o700);
+    if (sendWeekUsed) {
+      installWeekScripts(loc.helperDir, "claude");
+      privateWrite(weekSettings, JSON.stringify({
+        settingsFile: file, command, original: originalLine ?? null, shell: originalLine ? originalShell() : null,
+      }) + "\n");
+    }
     privateWrite(token, credential + "\n");
     try {
       privateWrite(file, settings);
@@ -529,7 +581,33 @@ function automaticSettings(args, app, endpoint) {
       throw error;
     }
     return backup;
-  };
+  } };
+}
+
+async function approveStatusLine(expires) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const terminal = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await terminal.question(
+      "Claude Code only shares this figure through a terminal status line. Add a small line like “Week 41% · resets Sun 14:00”? It replaces hints such as Esc to interrupt and ? for shortcuts. [y/N] ",
+      { signal: AbortSignal.timeout(Math.max(1, expires - Date.now())) },
+    );
+    return /^y(?:es)?$/i.test(answer.trim());
+  } catch {
+    return false;
+  } finally {
+    terminal.close();
+  }
+}
+
+async function withdrawWeekConsent(endpoint, credential) {
+  try {
+    const response = await fetch(weekEndpoint(endpoint), {
+      method: "DELETE", redirect: "error", signal: AbortSignal.timeout(4000),
+      headers: { Authorization: "Bearer " + credential },
+    });
+    await response.body?.cancel();
+  } catch { /* The local helper is never installed after a refusal. */ }
 }
 
 function backupSettings(file, original) {
@@ -563,12 +641,13 @@ async function switchOnTracking(args, {
   write = (line) => process.stdout.write(line + "\n"),
   openBrowser = openTrackingBrowser,
   timeout = TRACKING_TIMEOUT,
+  confirmStatusLine = approveStatusLine,
 } = {}) {
   const app = args.app;
   const label = TRACKING_APPS[app];
   if (!Object.hasOwn(TRACKING_APPS, app)) throw new Error("Choose Claude Code or Codex.");
   const { site, endpoint } = trackingAddresses();
-  const install = automaticSettings(args, app, endpoint);
+  const { install, canSendWeek, statusLineApproval } = automaticSettings(args, app, endpoint);
   const state = randomBytes(32).toString("base64url");
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   let port;
@@ -583,7 +662,7 @@ async function switchOnTracking(args, {
       server.closeAllConnections();
       resolve(result);
     };
-    const server = createServer({ maxHeaderSize: 4096 }, (request, response) => {
+    const server = createServer({ maxHeaderSize: 4096 }, async (request, response) => {
       const host = "127.0.0.1:" + port;
       let url;
       try {
@@ -595,6 +674,8 @@ async function switchOnTracking(args, {
       const supplied = url.searchParams.get("state") || "";
       const sealed = url.searchParams.get("sealed") || "";
       const appChoices = url.searchParams.getAll("apps");
+      const weekChoices = url.searchParams.getAll("week");
+      const sendWeekUsed = canSendWeek && weekChoices[0] === "1";
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Referrer-Policy", "no-referrer");
       response.setHeader("Connection", "close");
@@ -602,7 +683,8 @@ async function switchOnTracking(args, {
         || url.origin !== "http://" + host || url.pathname !== "/finish"
         || !/^[a-zA-Z0-9_-]{43}$/.test(supplied) || !timingSafeEqual(Buffer.from(state), Buffer.from(supplied))
         || !/^[a-zA-Z0-9_-]{342}$/.test(sealed)
-        || appChoices.length > 1 || (appChoices.length === 1 && !["0", "1"].includes(appChoices[0]))) {
+        || appChoices.length > 1 || (appChoices.length === 1 && !["0", "1"].includes(appChoices[0]))
+        || weekChoices.length > 1 || (weekChoices.length === 1 && !sendWeekUsed)) {
         response.writeHead(404).end();
         return;
       }
@@ -610,13 +692,14 @@ async function switchOnTracking(args, {
       try {
         credential = privateDecrypt({
           key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256",
-          oaepLabel: Buffer.from([state, app, port, expires].join(":")),
+          oaepLabel: Buffer.from([state, app, port, expires, ...(sendWeekUsed ? ["week"] : [])].join(":")),
         }, Buffer.from(sealed, "base64url")).toString("utf8");
       } catch {
         response.writeHead(404).end();
         return;
       }
-      if (!/^(?:nsc_[a-f0-9]{32}|nsu_[a-f0-9]{64})$/.test(credential)) {
+      if (!/^(?:nsc_[a-f0-9]{32}|nsu_[a-f0-9]{64})$/.test(credential)
+        || (sendWeekUsed && !credential.startsWith("nsu_"))) {
         response.writeHead(404).end();
         return;
       }
@@ -625,7 +708,8 @@ async function switchOnTracking(args, {
       let content;
       let result;
       try {
-        const backup = install(credential, sendAppNames);
+        const installWeekly = sendWeekUsed && (!statusLineApproval || await confirmStatusLine(expires));
+        const backup = install(credential, sendAppNames, installWeekly);
         const restart = "Restart " + label + " to start sending usage numbers.";
         const destination = credential.startsWith("nsu_")
           ? "In My agents, go to Your tools and open your tool’s card."
@@ -646,8 +730,20 @@ async function switchOnTracking(args, {
           content += `\n<p>${APP_NAMES_SENT}</p>`;
           lines.push(APP_NAMES_SENT);
         }
+        if (installWeekly) {
+          const source = app === "codex" ? "Codex" : "Your Claude Code terminal status line";
+          const note = source + " will send how much of your weekly limit you have used and when it resets. To stop, run setup again with the weekly limit box unticked.";
+          content += `\n<p>${note}</p>`;
+          lines.push(note);
+        } else if (sendWeekUsed) {
+          await withdrawWeekConsent(endpoint, credential);
+          const note = "Weekly limit tracking is off. To add it later, run setup in a terminal.";
+          content += `\n<p>${note}</p>`;
+          lines.push(note);
+        }
         result = { code: 0, stdout: lines.join("\n") };
       } catch {
+        if (sendWeekUsed) await withdrawWeekConsent(endpoint, credential);
         content = `<h1>${CONFIG_ERROR}</h1>`;
         result = { code: 1, stderr: CONFIG_ERROR };
       }
@@ -667,6 +763,7 @@ async function switchOnTracking(args, {
         app, port: String(port), state, key: publicKey.export({ format: "jwk" }).n, expires: String(expires),
       }).toString();
       if (app === "claude_code") url.searchParams.set("apps", "ask");
+      if (canSendWeek) url.searchParams.set("week", "ask");
       timer = setTimeout(() => finish({ code: 1, stderr: "The tracking setup link expired. Start again from your app." }), timeout);
       write("Finish switching on tracking in your browser.");
       openBrowser(url.href, write);
