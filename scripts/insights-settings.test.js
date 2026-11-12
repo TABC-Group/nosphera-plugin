@@ -262,7 +262,7 @@ async function testBrowserSetup() {
   const unrelated = 'model = "test"\r\nexamples = [\r\n  ["otel"]\r\n]\r\n[profiles.work]\r\ninstructions = """\r\n[otel]\r\n# BEGIN Nosphera Insights tracking\r\n"""\r\n';
   const oldOtel = '\r\n[otel]\r\nexporter = "none"\r\n[otel.metrics_exporter.otlp-http]\r\nendpoint = "https://old.example.test"\r\n';
   const original = unrelated + oldOtel;
-  const oldClaude = '{"theme":"dark","env":{"OTEL_LOG_TOOL_CONTENT":"1","MY_SETTING":"kept"}}';
+  const oldClaude = '{"theme":"dark","env":{"OTEL_LOG_TOOL_DETAILS":"1","OTEL_LOG_TOOL_CONTENT":"1","MY_SETTING":"kept"}}';
   fs.writeFileSync(codex, original);
   fs.writeFileSync(claude, oldClaude);
   const results = [];
@@ -282,7 +282,7 @@ async function testBrowserSetup() {
       assert.ifError(lookup.error);
       assert.notEqual(lookup.status, 0, "a bare whoami.exe call hits the stand-in");
     }
-    for (const { app, settings, credential, origin, label, destination, fail } of [
+    for (const { app, settings, credential, origin, label, destination, fail, appChoice } of [
       {
         app: "codex", settings: codex, credential: agentCredential, origin: "https://dev.nosphera.com",
         label: "Codex", destination: "In My agents, open your agent’s Insights tab.",
@@ -290,6 +290,14 @@ async function testBrowserSetup() {
       {
         app: "claude_code", settings: claude, credential: toolCredential, origin: "https://nosphera.com",
         label: "Claude Code", destination: "In My agents, go to Your tools and open your tool’s card.",
+      },
+      {
+        app: "claude_code", settings: claude, credential: toolCredential, origin: "https://nosphera.com",
+        label: "Claude Code", destination: "In My agents, go to Your tools and open your tool’s card.", appChoice: "1",
+      },
+      {
+        app: "claude_code", settings: claude, credential: toolCredential, origin: "https://nosphera.com",
+        label: "Claude Code", destination: "In My agents, go to Your tools and open your tool’s card.", appChoice: "0",
       },
       {
         app: "codex", settings: codex, credential: agentCredential, origin: "https://dev.nosphera.com", fail: true,
@@ -305,6 +313,7 @@ async function testBrowserSetup() {
       const page = new URL(await browser);
       assert.equal(page.origin, origin);
       assert.equal(page.pathname, "/my-agents/tracking");
+      assert.deepEqual(page.searchParams.getAll("apps"), app === "claude_code" ? ["ask"] : []);
       const { port, state, key, expires } = Object.fromEntries(page.searchParams);
       const callback = new URL("http://127.0.0.1:" + port + "/finish");
       const seal = publicEncrypt({
@@ -316,9 +325,16 @@ async function testBrowserSetup() {
       assert.equal((await fetch(callback)).status, 404);
       callback.search = new URLSearchParams({ state, sealed: randomBytes(256).toString("base64url") });
       assert.equal((await fetch(callback)).status, 404);
+      callback.searchParams.set("sealed", seal);
+      for (const invalidChoices of [[""], ["ask"], ["true"], ["2"], ["0", "1"]]) {
+        for (const value of invalidChoices) callback.searchParams.append("apps", value);
+        assert.equal((await fetch(callback)).status, 404);
+        callback.searchParams.delete("apps");
+      }
       assert.equal(fs.readFileSync(settings, "utf8"), before);
       if (fail) fs.appendFileSync(settings, "# Changed while setup was open\n");
-      callback.searchParams.set("sealed", seal);
+      if (appChoice !== undefined) callback.searchParams.set("apps", appChoice);
+      const expectedBackup = backupPath(settings);
       const response = await fetch(callback);
       assert.equal(response.status, fail ? 500 : 200);
       const html = await response.text();
@@ -350,8 +366,24 @@ async function testBrowserSetup() {
       assert.ok(html.includes("<li>Send one prompt.</li>"));
       assert.ok(html.includes(`<li>${destination.replace("My agents", `<a href="${origin}/my-agents">My agents</a>`)}</li>`));
       assert.match(html, /The first numbers show within about a minute/);
-      assert.equal(done.stdout.split("\n").at(-1), destination);
-      assert.equal(fs.readFileSync(settings + ".before-nosphera-insights", "utf8"), before);
+      assert.ok(done.stdout.split("\n").includes(destination));
+      const appNamesSent = "App names are sent from your next session.";
+      assert.equal(html.includes(`<p>${appNamesSent}</p>`), appChoice === "1");
+      assert.equal(done.stdout.split("\n").at(-1), appChoice === "1" ? appNamesSent : destination);
+      assert.equal(fs.readFileSync(expectedBackup, "utf8"), before);
+      if (app === "claude_code") {
+        const claudeSettings = JSON.parse(fs.readFileSync(settings, "utf8"));
+        assert.equal(claudeSettings.theme, "dark");
+        assert.deepEqual(claudeSettings.env, {
+          ...ENV,
+          MY_SETTING: "kept",
+          OTEL_LOG_USER_PROMPTS: "0",
+          OTEL_LOG_TOOL_DETAILS: appChoice === "1" ? "1" : "0",
+          OTEL_LOG_TOOL_CONTENT: "0",
+          OTEL_LOG_RAW_API_BODIES: "0",
+        });
+        assert.ok(!JSON.stringify(claudeSettings).includes(toolCredential));
+      }
     }
     const next = fs.readFileSync(codex, "utf8");
     assert.ok(next.startsWith(unrelated));
@@ -359,11 +391,6 @@ async function testBrowserSetup() {
     assert.ok(next.includes("Bearer " + agentCredential));
     assert.ok(!next.includes("https://old.example.test"));
     assert.equal(codexConfig(next, "https://dev-mcp.nosphera.com/otlp", agentCredential), next);
-    const claudeSettings = JSON.parse(fs.readFileSync(claude, "utf8"));
-    assert.equal(claudeSettings.theme, "dark");
-    assert.equal(claudeSettings.env.MY_SETTING, "kept");
-    assert.equal(claudeSettings.env.OTEL_LOG_TOOL_CONTENT, "0");
-    assert.ok(!JSON.stringify(claudeSettings).includes(toolCredential));
     const token = path.join(locations({ home: isolated }).helperDir, "tracking-token");
     assert.ok(fs.readFileSync(token, "utf8").trim() === toolCredential);
     if (process.platform !== "win32") assert.equal(fs.statSync(token).mode & 0o777, 0o600);

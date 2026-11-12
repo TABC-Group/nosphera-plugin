@@ -61,6 +61,8 @@ The first `get_lessons` and `lesson_added` calls ask for tool permission once, l
 
 In Claude Code, type `/nosphera:insights`. In Codex, type **Switch on tracking with Nosphera**. The plugin explains what the app sends and asks for your approval. In your browser, choose a tool or agent and press **Switch on tracking**. Restart your app when the plugin says the settings are saved.
 
+On nosphera.com, **Also send the names of the apps I use** lets Claude Code send tool call details so Nosphera can tell which apps you use. Nosphera keeps only the app and tool names from those details and discards everything else on arrival.
+
 The script backs up your settings. Claude Code reads the tracking code from a private file through a helper. Codex keeps the tracking header in a private marked block in its user config. To turn tracking off, restore the previous settings or remove the Nosphera tracking settings, then restart the app.
 
 **Other ways → Get tracking code** in My agents is for manual setup and older plugin versions. The [Insights setup guide](https://nosphera.com/learn/how-to-switch-on-insights) includes a local Collector for removing identity fields before they leave your computer.

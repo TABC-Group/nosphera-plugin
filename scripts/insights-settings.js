@@ -347,6 +347,7 @@ const TRACKING_TIMEOUT = 5 * 60_000;
 const OTEL_BEGIN = "# BEGIN Nosphera Insights tracking";
 const OTEL_END = "# END Nosphera Insights tracking";
 const CONFIG_ERROR = "Could not update your tracking settings. Check that your settings file is writable, then start again.";
+const APP_NAMES_SENT = "App names are sent from your next session.";
 const DONE_STYLE = `
   :root { color-scheme: light dark; }
   body { margin: 0; background: Canvas; color: CanvasText; font: 1rem/1.6 system-ui, sans-serif; }
@@ -511,8 +512,10 @@ function automaticSettings(args, app, endpoint) {
   for (const key of CONTENT_SWITCHES) block.env[key] = "0";
   const original = readIfPresent(file);
   const { existing } = readSettings(file);
-  const settings = JSON.stringify(plan(existing, block).merged, null, 2) + "\n";
-  return (credential) => {
+  const { merged } = plan(existing, block);
+  return (credential, sendAppNames) => {
+    if (sendAppNames) merged.env.OTEL_LOG_TOOL_DETAILS = "1";
+    const settings = JSON.stringify(merged, null, 2) + "\n";
     const backup = backupSettings(file, original);
     const oldToken = readIfPresent(token);
     privateWrite(helper, helperText);
@@ -591,13 +594,15 @@ async function switchOnTracking(args, {
       }
       const supplied = url.searchParams.get("state") || "";
       const sealed = url.searchParams.get("sealed") || "";
+      const appChoices = url.searchParams.getAll("apps");
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Referrer-Policy", "no-referrer");
       response.setHeader("Connection", "close");
       if (completed || Date.now() >= expires || request.method !== "GET" || request.headers.host !== host
         || url.origin !== "http://" + host || url.pathname !== "/finish"
         || !/^[a-zA-Z0-9_-]{43}$/.test(supplied) || !timingSafeEqual(Buffer.from(state), Buffer.from(supplied))
-        || !/^[a-zA-Z0-9_-]{342}$/.test(sealed)) {
+        || !/^[a-zA-Z0-9_-]{342}$/.test(sealed)
+        || appChoices.length > 1 || (appChoices.length === 1 && !["0", "1"].includes(appChoices[0]))) {
         response.writeHead(404).end();
         return;
       }
@@ -616,10 +621,11 @@ async function switchOnTracking(args, {
         return;
       }
       completed = true;
+      const sendAppNames = app === "claude_code" && appChoices[0] === "1";
       let content;
       let result;
       try {
-        const backup = install(credential);
+        const backup = install(credential, sendAppNames);
         const restart = "Restart " + label + " to start sending usage numbers.";
         const destination = credential.startsWith("nsu_")
           ? "In My agents, go to Your tools and open your tool’s card."
@@ -636,6 +642,10 @@ async function switchOnTracking(args, {
         const lines = ["Tracking settings saved. " + restart];
         if (backup) lines.push("Previous settings saved to " + backup);
         lines.push(destination);
+        if (sendAppNames) {
+          content += `\n<p>${APP_NAMES_SENT}</p>`;
+          lines.push(APP_NAMES_SENT);
+        }
         result = { code: 0, stdout: lines.join("\n") };
       } catch {
         content = `<h1>${CONFIG_ERROR}</h1>`;
@@ -656,6 +666,7 @@ async function switchOnTracking(args, {
       url.search = new URLSearchParams({
         app, port: String(port), state, key: publicKey.export({ format: "jwk" }).n, expires: String(expires),
       }).toString();
+      if (app === "claude_code") url.searchParams.set("apps", "ask");
       timer = setTimeout(() => finish({ code: 1, stderr: "The tracking setup link expired. Start again from your app." }), timeout);
       write("Finish switching on tracking in your browser.");
       openBrowser(url.href, write);

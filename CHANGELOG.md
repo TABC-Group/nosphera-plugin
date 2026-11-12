@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4
+
+- When you set up Claude Code tracking on nosphera.com, you can choose to send the names of the apps you use. Nosphera keeps only app and tool names from the call details.
+
 ## 0.2.3
 
 - The sign-in notice for a new Claude Code folder now gets its name from Nosphera. In 0.2.2, Claude could show the wrong name.
